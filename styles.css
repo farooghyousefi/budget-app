@@ -578,7 +578,7 @@ input {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);
-  padding: 10px;
+  padding: 11px;
 }
 
 .detail-card span {
