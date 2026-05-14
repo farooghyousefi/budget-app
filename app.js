@@ -632,8 +632,8 @@ function renderDetailTitles() {
   const totals = selectedMonthlyTotals(month);
   const debt = selectedDebtTotal(month);
   const assetTotal = state.assets
-    .filter((asset) => matchesSelectedPerson(asset.personId))
-    .reduce((total, asset) => total + Number(asset.amount || 0), 0);
+  .filter(includeInSelectedTotal)
+  .reduce((total, asset) => total + Number(asset.amount || 0), 0);
   elements.debtTitle.textContent = `Schulden - ${suffix}`;
   elements.debtTotalMini.textContent = formatMoney.format(debt);
   elements.assetTitle.textContent = `Vermögen - ${suffix}`;
