@@ -1907,21 +1907,39 @@ async function duplicatePerson(sourceId) {
   const now = Date.now();
   let counter = 0;
   state.entries
-    .filter((entry) => (entry.personId || defaultPersonId()) === sourceId && !entry.duplicateOf)
-    .forEach((entry) => {
-      state.entries.push({ ...entry, id: createId(), personId: newPerson.id, updatedAt: now + counter, duplicateOf: entry.id });
-      counter += 1;
+  .filter((entry) => (entry.personId || defaultPersonId()) === sourceId)
+  .forEach((entry) => {
+    state.entries.push({
+      ...entry,
+      id: createId(),
+      personId: newPerson.id,
+      updatedAt: now + counter,
+      duplicateOf: entry.duplicateOf || entry.id,
     });
-  state.debts
-    .filter((debt) => (debt.personId || defaultPersonId()) === sourceId && !debt.duplicateOf)
-    .forEach((debt) => {
-      state.debts.push({ ...debt, id: createId(), personId: newPerson.id, duplicateOf: debt.id });
+    counter += 1;
+  });
+
+state.debts
+  .filter((debt) => (debt.personId || defaultPersonId()) === sourceId)
+  .forEach((debt) => {
+    state.debts.push({
+      ...debt,
+      id: createId(),
+      personId: newPerson.id,
+      duplicateOf: debt.duplicateOf || debt.id,
     });
-  state.assets
-    .filter((asset) => (asset.personId || defaultPersonId()) === sourceId && !asset.duplicateOf)
-    .forEach((asset) => {
-      state.assets.push({ ...asset, id: createId(), personId: newPerson.id, duplicateOf: asset.id });
+  });
+
+state.assets
+  .filter((asset) => (asset.personId || defaultPersonId()) === sourceId)
+  .forEach((asset) => {
+    state.assets.push({
+      ...asset,
+      id: createId(),
+      personId: newPerson.id,
+      duplicateOf: asset.duplicateOf || asset.id,
     });
+  });
 
   state.selectedPersonId = newPerson.id;
   persist();
