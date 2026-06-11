@@ -1,6 +1,6 @@
-# Budget App
+# BudgetUp
 
-Eine einfache persönliche Budget-Web-App für Einnahmen, Ausgaben, Schulden und Vermögen.
+Eine persönliche Budget-Web-App für Einnahmen, Ausgaben, Schulden, Vermögen und Monatsauswertungen.
 
 ## Wichtig
 

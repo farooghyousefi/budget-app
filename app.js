@@ -1,15 +1,22 @@
 const STORAGE_KEY = "budget-app-v2";
+const STANDARD_CATEGORY_NAMES = [
+  "Wohnen",
+  "Lebensmittel",
+  "Transport",
+  "Auto",
+  "Versicherung",
+  "Gesundheit",
+  "Freizeit",
+  "Reisen",
+  "Abos",
+  "Schulden",
+  "Einkommen",
+  "Sonstiges",
+];
+const ENTRY_STATUSES = ["open", "paid", "ended"];
 
 const defaults = {
-  categories: [
-    { id: createId(), name: "Miete", budget: 950 },
-    { id: createId(), name: "Lebensmittel", budget: 350 },
-    { id: createId(), name: "Transport", budget: 80 },
-    { id: createId(), name: "Versicherung", budget: 120 },
-    { id: createId(), name: "Freizeit", budget: 150 },
-    { id: createId(), name: "Schulden", budget: 0 },
-    { id: createId(), name: "Sonstiges", budget: 100 },
-  ],
+  categories: STANDARD_CATEGORY_NAMES.map((name) => ({ id: createId(), name, budget: defaultBudgetForCategory(name) })),
   entries: [
   ],
   debts: [],
@@ -23,14 +30,22 @@ const defaults = {
 const state = loadState();
 const formatMoney = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 ensurePeople();
-ensureDebtCategory();
+ensureStandardCategories();
+repairCopiedAssets();
 
 const elements = {
   monthInput: document.querySelector("#monthInput"),
   entryForm: document.querySelector("#entryForm"),
-  mainFormSlot: document.querySelector("#mainFormSlot"),
-  debtFormSlot: document.querySelector("#debtFormSlot"),
-  entryFormSlot: document.querySelector("#entryFormSlot"),
+  assetForm: document.querySelector("#assetForm"),
+  assetFormTitle: document.querySelector("#assetFormTitle"),
+  assetId: document.querySelector("#assetId"),
+  assetPersonInput: document.querySelector("#assetPersonInput"),
+  assetNameInput: document.querySelector("#assetNameInput"),
+  assetAmountInput: document.querySelector("#assetAmountInput"),
+  assetNoteInput: document.querySelector("#assetNoteInput"),
+  assetModalActions: document.querySelector("#assetModalActions"),
+  assetCancelButton: document.querySelector("#assetCancelButton"),
+  assetDeleteButton: document.querySelector("#assetDeleteButton"),
   formTitle: document.querySelector("#formTitle"),
   entryId: document.querySelector("#entryId"),
   typeInput: document.querySelector("#typeInput"),
@@ -42,10 +57,13 @@ const elements = {
   toggleFormButton: document.querySelector("#toggleFormButton"),
   dateInput: document.querySelector("#dateInput"),
   categoryInput: document.querySelector("#categoryInput"),
+  customCategoryInput: document.querySelector("#customCategoryInput"),
   amountInput: document.querySelector("#amountInput"),
   descriptionInput: document.querySelector("#descriptionInput"),
   paymentInput: document.querySelector("#paymentInput"),
   recurringInput: document.querySelector("#recurringInput"),
+  entryEndInput: document.querySelector("#entryEndInput"),
+  entryStatusInput: document.querySelector("#entryStatusInput"),
   resetFormButton: document.querySelector("#resetFormButton"),
   debtId: document.querySelector("#debtId"),
   creditorInput: document.querySelector("#creditorInput"),
@@ -54,6 +72,7 @@ const elements = {
   debtPaymentInput: document.querySelector("#debtPaymentInput"),
   debtStartInput: document.querySelector("#debtStartInput"),
   debtEndInput: document.querySelector("#debtEndInput"),
+  debtStatusInput: document.querySelector("#debtStatusInput"),
   debtPaymentMethodInput: document.querySelector("#debtPaymentMethodInput"),
   debtAccountInput: document.querySelector("#debtAccountInput"),
   principalInput: document.querySelector("#principalInput"),
@@ -76,16 +95,26 @@ const elements = {
   categoryList: document.querySelector("#categoryList"),
   categoryTemplate: document.querySelector("#categoryTemplate"),
   addCategoryButton: document.querySelector("#addCategoryButton"),
+  entryMenuButton: document.querySelector("#entryMenuButton"),
+  entryMenuPanel: document.querySelector("#entryMenuPanel"),
   filterInput: document.querySelector("#filterInput"),
   entryList: document.querySelector("#entryList"),
   exportButton: document.querySelector("#exportButton"),
   importInput: document.querySelector("#importInput"),
   clearButton: document.querySelector("#clearButton"),
-  familyIncomeValue: document.querySelector("#familyIncomeValue"),
-  familyExpenseValue: document.querySelector("#familyExpenseValue"),
   remainingValue: document.querySelector("#remainingValue"),
   totalDebtValue: document.querySelector("#totalDebtValue"),
   totalAssetValue: document.querySelector("#totalAssetValue"),
+  netWorthValue: document.querySelector("#netWorthValue"),
+  currentMonthValue: document.querySelector("#currentMonthValue"),
+  previousMonthValue: document.querySelector("#previousMonthValue"),
+  monthDifferenceValue: document.querySelector("#monthDifferenceValue"),
+  topCategoryList: document.querySelector("#topCategoryList"),
+  recurringInsightList: document.querySelector("#recurringInsightList"),
+  restBudgetValue: document.querySelector("#restBudgetValue"),
+  restBudgetHint: document.querySelector("#restBudgetHint"),
+  carryoverCount: document.querySelector("#carryoverCount"),
+  carryoverHint: document.querySelector("#carryoverHint"),
   summaryCards: document.querySelectorAll("[data-summary]"),
   summaryBreakdown: document.querySelector("#summaryBreakdown"),
   summaryBreakdownTitle: document.querySelector("#summaryBreakdownTitle"),
@@ -118,18 +147,28 @@ const elements = {
   promptDialogCancel: document.querySelector("#promptDialogCancel"),
   promptDialogBackdrop: document.querySelector("#promptDialog .confirm-dialog-backdrop"),
   personContextMenu: document.querySelector("#personContextMenu"),
+  editModal: document.querySelector("#editModal"),
+  editModalBackdrop: document.querySelector("#editModalBackdrop"),
+  editModalSlot: document.querySelector("#editModalSlot"),
+  editModalActions: document.querySelector("#editModalActions"),
+  editCancelButton: document.querySelector("#editCancelButton"),
+  editDeleteButton: document.querySelector("#editDeleteButton"),
 };
 
 let formTypeChoiceVisible = true;
 let activeSummaryType = "";
 let activeFormKey = "";
+let activeEditContext = null;
 
-elements.monthInput.value = new Date().toISOString().slice(0, 7);
+elements.monthInput.value = currentLocalMonth();
 elements.typeInput.value = "expense";
 
 elements.entryForm.addEventListener("submit", saveEntry);
 elements.entryForm.addEventListener("input", (event) => clearFieldError(event.target));
 elements.entryForm.addEventListener("change", (event) => clearFieldError(event.target));
+elements.assetForm.addEventListener("submit", saveAsset);
+elements.assetForm.addEventListener("input", (event) => clearFieldError(event.target));
+elements.assetForm.addEventListener("change", (event) => clearFieldError(event.target));
 elements.resetFormButton.addEventListener("click", () => resetForm());
 elements.toggleFormButton.addEventListener("click", toggleForm);
 elements.addDebtButton.addEventListener("click", (event) => {
@@ -150,7 +189,7 @@ elements.addExpenseButton.addEventListener("click", (event) => {
 elements.addAssetButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
-  addAsset();
+  openAssetForm();
 });
 elements.addPersonButton.addEventListener("click", addPerson);
 elements.personNameInput.addEventListener("keydown", (event) => {
@@ -160,16 +199,30 @@ elements.personNameInput.addEventListener("keydown", (event) => {
   }
 });
 elements.typeInput.addEventListener("change", syncFormMode);
+elements.recurringInput.addEventListener("change", syncRecurringFields);
+elements.categoryInput.addEventListener("change", () => {
+  if (elements.categoryInput.value) elements.customCategoryInput.value = "";
+});
 elements.addCategoryButton.addEventListener("click", addCategory);
-elements.filterInput.addEventListener("change", render);
+elements.filterInput.addEventListener("change", () => {
+  render();
+  closeEntryMenu();
+});
 elements.monthInput.addEventListener("change", render);
 elements.summaryCards.forEach((card) => {
   card.addEventListener("click", () => toggleSummaryBreakdown(card.dataset.summary));
 });
 elements.summaryBreakdownClose.addEventListener("click", () => closeSummaryBreakdown());
+elements.entryMenuButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  toggleEntryMenu();
+});
+elements.entryMenuPanel.addEventListener("click", (event) => event.stopPropagation());
 elements.exportButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  closeEntryMenu();
   exportBackup();
 });
 elements.importInput.addEventListener("change", importBackup);
@@ -191,16 +244,38 @@ elements.clearAssetsButton.addEventListener("click", (event) => {
 elements.clearEntriesButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  closeEntryMenu();
   clearEntriesForContext();
 });
 document.querySelectorAll(".collapsible-panel .list-actions").forEach((node) => {
   node.addEventListener("click", (event) => event.stopPropagation());
 });
 elements.filterInput.addEventListener("click", (event) => event.stopPropagation());
+document.addEventListener("click", (event) => {
+  if (elements.entryMenuPanel.hidden) return;
+  if (elements.entryMenuPanel.contains(event.target) || elements.entryMenuButton.contains(event.target)) return;
+  closeEntryMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeEntryMenu();
+    if (!elements.editModal.hidden) closeEditModal();
+  }
+});
+elements.editModalBackdrop.addEventListener("click", closeEditModal);
+elements.editModal.addEventListener("click", (event) => {
+  if (event.target === elements.editModal) closeEditModal();
+});
+elements.editCancelButton.addEventListener("click", closeEditModal);
+elements.editDeleteButton.addEventListener("click", deleteActiveEditItem);
+elements.assetCancelButton.addEventListener("click", closeEditModal);
+elements.assetDeleteButton.addEventListener("click", deleteActiveEditItem);
 [elements.amountInput, elements.debtTotalInput, elements.paidSoFarInput, elements.debtPaymentInput, elements.principalInput, elements.interestInput, elements.finalPaymentInput].forEach((input) => {
   input.addEventListener("blur", () => formatMoneyField(input));
   input.addEventListener("focus", () => input.select());
 });
+elements.assetAmountInput.addEventListener("blur", () => formatMoneyField(elements.assetAmountInput));
+elements.assetAmountInput.addEventListener("focus", () => elements.assetAmountInput.select());
 elements.nominalRateInput.addEventListener("blur", () => {
   elements.nominalRateInput.value = formatPercentInput(elements.nominalRateInput.value);
 });
@@ -260,12 +335,25 @@ function fallbackPersonId() {
   return defaults.people[0]?.id || "gemeinsam";
 }
 
+function cleanCopyLabel(value) {
+  const text = String(value || "").trim();
+  const cleaned = text.replace(/\s*(?:\(|\[)?kopie(?:\)|\])?\s*$/i, "").trim();
+  return cleaned || text;
+}
+
 function ensurePeople() {
   let changed = false;
   if (!Array.isArray(state.people) || !state.people.length) {
     state.people = clone(defaults.people);
     changed = true;
   }
+  state.people.forEach((person) => {
+    const cleanName = cleanCopyLabel(person.name);
+    if (cleanName && cleanName !== person.name) {
+      person.name = cleanName;
+      changed = true;
+    }
+  });
   if (!state.selectedPersonId) {
     state.selectedPersonId = "all";
     changed = true;
@@ -288,47 +376,106 @@ function ensurePeople() {
   if (changed) persist();
 }
 
-function ensureDebtCategory() {
-  if (!state.categories.some((category) => category.name.toLowerCase() === "schulden")) {
-    state.categories.push({ id: createId(), name: "Schulden", budget: 0 });
-    persist();
-  }
+function ensureStandardCategories() {
+  let changed = false;
+  STANDARD_CATEGORY_NAMES.forEach((name) => {
+    if (!state.categories.some((category) => sameCategory(category.name, name))) {
+      state.categories.push({ id: createId(), name, budget: defaultBudgetForCategory(name) });
+      changed = true;
+    }
+  });
+  state.entries.forEach((entry) => {
+    const name = String(entry.category || "").trim();
+    if (name && !state.categories.some((category) => sameCategory(category.name, name))) {
+      state.categories.push({ id: createId(), name, budget: 0 });
+      changed = true;
+    }
+  });
+  state.categories.forEach((category) => {
+    if (!category.id) {
+      category.id = createId();
+      changed = true;
+    }
+    category.name = String(category.name || "").trim() || "Sonstiges";
+    category.budget = Number(category.budget || 0);
+  });
+  if (changed) persist();
 }
 
-function openForm({ showTypeChoice = true, slot = elements.mainFormSlot, key = "main" } = {}) {
-  moveFormTo(slot);
-  activeFormKey = key;
-  elements.entryForm.hidden = false;
-  elements.toggleFormButton.textContent = "× Formular schließen";
-  setTypeChoiceVisible(showTypeChoice);
-  fillPersonSelect();
-  syncFormMode();
+function toggleEntryMenu() {
+  elements.entryMenuPanel.hidden = !elements.entryMenuPanel.hidden;
+}
+
+function closeEntryMenu() {
+  elements.entryMenuPanel.hidden = true;
+}
+
+function repairCopiedAssets() {
+  const originalsBySignature = new Map();
+  let changed = false;
+
+  state.assets.forEach((asset) => {
+    const signature = assetSignature(asset);
+    if (!signature) return;
+
+    if (asset.duplicateOf) {
+      if (!originalsBySignature.has(signature)) originalsBySignature.set(signature, asset);
+      return;
+    }
+
+    const original = originalsBySignature.get(signature);
+    if (original && (original.personId || defaultPersonId()) !== (asset.personId || defaultPersonId())) {
+      asset.duplicateOf = original.duplicateOf || original.id;
+      changed = true;
+      return;
+    }
+
+    originalsBySignature.set(signature, asset);
+  });
+
+  if (changed) persist();
+}
+
+function assetSignature(asset) {
+  const name = String(asset.name || "").trim().toLowerCase();
+  const note = String(asset.note || "").trim().toLowerCase();
+  const amount = Number(asset.amount || 0).toFixed(2);
+  if (!name && amount === "0.00") return "";
+  return `${name}|${amount}|${note}`;
 }
 
 function closeForm() {
   elements.entryForm.hidden = true;
+  elements.entryForm.classList.remove("modal-form");
+  elements.editModalActions.hidden = true;
+  elements.editDeleteButton.hidden = false;
+  elements.assetForm.hidden = true;
+  elements.assetForm.classList.remove("modal-form");
+  elements.assetModalActions.hidden = true;
+  elements.assetDeleteButton.hidden = false;
   elements.toggleFormButton.textContent = "+ Neuer Eintrag";
   activeFormKey = "";
+  activeEditContext = null;
   clearFieldErrors();
 }
 
 function toggleForm() {
-  if (elements.entryForm.hidden || activeFormKey !== "main") {
-    resetForm({ showTypeChoice: true, type: "expense" });
-    openForm({ showTypeChoice: true, slot: elements.mainFormSlot, key: "main" });
-  } else {
-    closeForm();
+  if (isModalOpenFor("main")) {
+    closeEditModal();
+    return;
   }
+  resetForm({ showTypeChoice: true, type: "expense" });
+  openEntryModal({ key: "main", mode: "create", type: "expense", showTypeChoice: true });
 }
 
 function openTypedForm(type) {
   const key = `typed:${type}`;
-  if (!elements.entryForm.hidden && activeFormKey === key) {
-    closeForm();
+  if (isModalOpenFor(key)) {
+    closeEditModal();
     return;
   }
   resetForm({ showTypeChoice: false, type });
-  openForm({ showTypeChoice: false, slot: formSlotForType(type), key });
+  openEntryModal({ key, mode: "create", type, showTypeChoice: false });
   fillPersonSelect();
   elements.personInput.value = targetPersonIdForNewItem();
   if (type === "income") elements.categoryInput.value = "Gehalt";
@@ -339,13 +486,49 @@ function targetPersonIdForNewItem() {
   return state.selectedPersonId === "all" ? defaultPersonId() : state.selectedPersonId;
 }
 
-function formSlotForType(type) {
-  return type === "debt" ? elements.debtFormSlot : elements.entryFormSlot;
+function isModalOpenFor(key) {
+  return !elements.editModal.hidden && activeFormKey === key;
 }
 
-function moveFormTo(slot) {
-  if (!slot) return;
-  slot.after(elements.entryForm);
+function openEntryModal({ key, mode, type, id = "", showTypeChoice = false }) {
+  if (isModalOpenFor(key)) {
+    closeEditModal();
+    return false;
+  }
+  activeEditContext = { kind: type === "debt" ? "debt" : "entry", mode, id };
+  activeFormKey = key;
+  elements.editModalSlot.append(elements.entryForm);
+  elements.assetForm.hidden = true;
+  elements.entryForm.hidden = false;
+  elements.entryForm.classList.add("modal-form");
+  elements.editModalActions.hidden = false;
+  elements.editDeleteButton.hidden = mode !== "edit";
+  elements.toggleFormButton.textContent = key === "main" ? "× Formular schließen" : "+ Neuer Eintrag";
+  elements.editModal.hidden = false;
+  document.body.classList.add("modal-open");
+  setTypeChoiceVisible(showTypeChoice);
+  elements.typeInput.value = type;
+  fillPersonSelect();
+  syncFormMode();
+  updateFormTitle();
+  focusModalForm(elements.entryForm);
+  return true;
+}
+
+function openEditForm({ type, id }) {
+  const key = `edit-${type}:${id}`;
+  return openEntryModal({ key, mode: "edit", type, id, showTypeChoice: false });
+}
+
+function closeEditModal() {
+  if (elements.editModal.hidden) return;
+  elements.editModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  closeForm();
+}
+
+function focusModalForm(form) {
+  window.setTimeout(() => form.querySelector("input:not([type='hidden']), select")?.focus({ preventScroll: true }), 30);
 }
 
 function setTypeChoiceVisible(visible) {
@@ -355,15 +538,19 @@ function setTypeChoiceVisible(visible) {
 }
 
 function updateFormTitle() {
+  if (activeEditContext?.mode === "edit") {
+    elements.formTitle.textContent = activeEditContext.kind === "debt" ? "Schuld bearbeiten" : "Eintrag bearbeiten";
+    return;
+  }
   if (formTypeChoiceVisible) {
-    elements.formTitle.textContent = "Einfach eintragen";
+    elements.formTitle.textContent = "Neuer Eintrag";
     return;
   }
 
   const titles = {
-    debt: "Schuld eintragen",
-    income: "Einnahme eintragen",
-    expense: "Ausgabe eintragen",
+    debt: "Neue Schuld",
+    income: "Neue Einnahme",
+    expense: "Neue Ausgabe",
   };
   elements.formTitle.textContent = titles[elements.typeInput.value] || "Eintragen";
 }
@@ -397,17 +584,25 @@ function saveEntry(event) {
     setFieldError(elements.amountInput, "Bitte Betrag eingeben.");
     return;
   }
+  if (elements.recurringInput.checked && elements.entryEndInput.value && dateToMonthNumber(elements.entryEndInput.value) < dateToMonthNumber(elements.dateInput.value || monthToDate(elements.monthInput.value))) {
+    setFieldError(elements.entryEndInput, "Enddatum muss nach dem Startdatum liegen.");
+    return;
+  }
+
+  const category = resolveCategoryInput(elements.typeInput.value);
 
   const entry = {
     id: elements.entryId.value || createId(),
     personId: elements.personInput.value || defaultPersonId(),
     type: elements.typeInput.value,
     date: elements.dateInput.value || monthToDate(elements.monthInput.value),
-    category: elements.categoryInput.value || (elements.typeInput.value === "income" ? "Einnahme" : "Ausgabe"),
+    category,
     description: elements.descriptionInput.value.trim() || (elements.typeInput.value === "income" ? "Einnahme" : "Ausgabe"),
     payment: elements.paymentInput.value,
     amount,
     recurring: elements.recurringInput.checked,
+    endDate: elements.recurringInput.checked ? elements.entryEndInput.value : "",
+    status: normalizeStatus(elements.entryStatusInput.value),
     updatedAt: Date.now(),
   };
 
@@ -422,7 +617,8 @@ function saveEntry(event) {
   resetForm({ showTypeChoice: true, type: "expense" });
   render();
   showMessage("Gespeichert.", "success");
-  closeForm();
+  if (activeEditContext) closeEditModal();
+  else closeForm();
 }
 
 function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
@@ -433,7 +629,11 @@ function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
   elements.typeInput.value = nextType;
   elements.paymentInput.value = "Karte";
   elements.recurringInput.checked = false;
+  elements.entryEndInput.value = "";
+  elements.entryStatusInput.value = "open";
+  elements.customCategoryInput.value = "";
   elements.debtPaymentMethodInput.value = "";
+  elements.debtStatusInput.value = "open";
   fillCategorySelect();
   setTypeChoiceVisible(showTypeChoice);
   syncFormMode();
@@ -485,6 +685,7 @@ function saveDebtFromMainForm() {
     monthlyPayment: Number.isFinite(monthlyPayment) ? monthlyPayment : 0,
     startDate: elements.debtStartInput.value,
     endDate: elements.debtEndInput.value,
+    status: normalizeStatus(elements.debtStatusInput.value),
     paymentMethod: elements.debtPaymentMethodInput.value,
     account: elements.debtAccountInput.value.trim(),
     principalAmount: Number.isFinite(principalAmount) ? principalAmount : 0,
@@ -511,7 +712,8 @@ function saveDebtFromMainForm() {
   resetForm();
   render();
   showMessage("Gespeichert.", "success");
-  closeForm();
+  if (activeEditContext) closeEditModal();
+  else closeForm();
 }
 
 function addCategory() {
@@ -695,7 +897,7 @@ async function deletePerson(id) {
 }
 
 function monthlyTotalsForPerson(personId, month) {
-  const entries = state.entries.filter((entry) => (entry.personId || defaultPersonId()) === personId && entry.date.startsWith(month));
+  const entries = state.entries.filter((entry) => (entry.personId || defaultPersonId()) === personId && isEntryActiveInMonth(entry, month));
   const income = sum(entries.filter((entry) => entry.type === "income"));
   const entryExpense = sum(entries.filter((entry) => entry.type === "expense"));
   const debtExpense = state.debts
@@ -713,10 +915,10 @@ function monthlyTotalsForPerson(personId, month) {
 
 function monthlyTotalsForFamily(month) {
   const income = state.entries
-    .filter((entry) => !entry.duplicateOf && entry.date.startsWith(month) && entry.type === "income")
+    .filter((entry) => !entry.duplicateOf && isEntryActiveInMonth(entry, month) && entry.type === "income")
     .reduce((total, entry) => total + Number(entry.amount || 0), 0);
   const entryExpense = state.entries
-    .filter((entry) => !entry.duplicateOf && entry.date.startsWith(month) && entry.type === "expense")
+    .filter((entry) => !entry.duplicateOf && isEntryActiveInMonth(entry, month) && entry.type === "expense")
     .reduce((total, entry) => total + Number(entry.amount || 0), 0);
   const debtExpense = state.debts
     .filter((debt) => !debt.duplicateOf && isDebtActiveInMonth(debt, month))
@@ -750,6 +952,7 @@ function syncFormMode() {
   elements.debtPaymentInput.required = false;
   elements.debtStartInput.required = false;
   elements.debtEndInput.required = false;
+  elements.debtStatusInput.required = false;
   elements.debtPaymentMethodInput.required = false;
   elements.principalInput.required = false;
   elements.interestInput.required = false;
@@ -760,12 +963,28 @@ function syncFormMode() {
   if (isIncome && elements.categoryInput.value !== "Gehalt") {
     elements.categoryInput.value = "Gehalt";
   }
+  if (isDebt) {
+    elements.creditorInput.required = true;
+    elements.debtTotalInput.required = true;
+  } else {
+    elements.categoryInput.required = true;
+    elements.amountInput.required = true;
+  }
+  syncRecurringFields();
   updateFormTitle();
+}
+
+function syncRecurringFields() {
+  if (!elements.entryEndInput) return;
+  const recurring = elements.recurringInput.checked;
+  elements.entryEndInput.disabled = !recurring;
+  elements.entryEndInput.closest("label")?.classList.toggle("muted-field", !recurring);
+  if (!recurring) elements.entryEndInput.value = "";
 }
 
 function fillCategorySelect() {
   const existing = elements.categoryInput.value;
-  const names = [...state.categories.map((category) => category.name), "Gehalt"];
+  const names = uniqueCategoryNames([...STANDARD_CATEGORY_NAMES, ...state.categories.map((category) => category.name), "Gehalt"]);
   elements.categoryInput.innerHTML = names
     .filter(Boolean)
     .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
@@ -794,7 +1013,7 @@ function renderEntries() {
   const month = elements.monthInput.value;
   const filter = elements.filterInput.value;
   const entries = state.entries
-    .filter((entry) => entry.date.startsWith(month))
+    .filter((entry) => isEntryActiveInMonth(entry, month))
     .filter(includeInSelectedTotal)
     .filter((entry) => filter === "all" || entry.type === filter || (filter === "recurring" && entry.recurring))
     .sort((a, b) => {
@@ -812,19 +1031,23 @@ function renderEntries() {
   elements.entryList.innerHTML = entries.map((entry) => {
     const sign = entry.type === "income" ? "+" : "-";
     const title = entry.description || entry.category;
-    const meta = [personName(entry.personId), entry.category, displayText(entry.payment), entry.recurring ? "monatlich" : ""].filter(Boolean).join(" · ");
+    const meta = [personName(entry.personId), entry.category, displayText(entry.payment)].filter(Boolean).join(" · ");
+    const badges = entryBadges(entry, month);
     return `
       <article class="entry-row ${entry.type}">
-        <time class="entry-date" datetime="${entry.date}">${formatDate(entry.date)}</time>
+        <time class="entry-date" datetime="${entryOccurrenceDate(entry, month)}">${formatDate(entryOccurrenceDate(entry, month))}</time>
         <div class="entry-main">
-          <strong>${escapeHtml(title)}</strong>
+          <div class="row-heading">
+            <strong>${escapeHtml(title)}</strong>
+            <span class="entry-controls inline-controls">
+              <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-edit="${entry.id}">✎</button>
+              <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-delete="${entry.id}">×</button>
+            </span>
+          </div>
           <span>${escapeHtml(meta)}</span>
+          ${badges ? `<div class="status-badges">${badges}</div>` : ""}
         </div>
         <div class="entry-amount ${entry.type}">${sign}${formatMoney.format(entry.amount)}</div>
-        <div class="entry-controls">
-          <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-edit="${entry.id}">✎</button>
-          <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-delete="${entry.id}">×</button>
-        </div>
       </article>
     `;
   }).join("");
@@ -840,6 +1063,7 @@ function renderEntries() {
 function renderDebts() {
   const month = elements.monthInput.value;
   const debts = state.debts
+    .filter((debt) => isDebtVisibleInMonth(debt, month))
     .filter(includeInSelectedTotal)
     .sort((a, b) => a.creditor.localeCompare(b.creditor));
 
@@ -853,6 +1077,8 @@ function renderDebts() {
     const paid = paidDebt(debt, month);
     const active = isDebtActiveInMonth(debt, month);
     const term = debt.termMonths || monthsFromDates(debt.startDate, debt.endDate);
+    const progress = debtProgressPercent(debt, month);
+    const badges = debtBadges(debt, month, active);
     const meta = [
       personName(debt.personId),
       debt.startDate || debt.endDate ? `${debt.startDate ? formatDateFull(debt.startDate) : "kein Start"} bis ${debt.endDate ? formatDateFull(debt.endDate) : "offen"}` : "",
@@ -863,22 +1089,27 @@ function renderDebts() {
     return `
       <article class="debt-row ${active ? "active" : ""}">
         <div class="debt-main">
-          <strong>${escapeHtml(debt.creditor)}</strong>
+          <div class="row-heading">
+            <strong>${escapeHtml(debt.creditor)}</strong>
+            <span class="entry-controls inline-controls">
+              <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-debt-edit="${debt.id}">✎</button>
+              <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-debt-delete="${debt.id}">×</button>
+            </span>
+          </div>
           <span>${escapeHtml(meta)}</span>
+          ${badges ? `<div class="status-badges">${badges}</div>` : ""}
         </div>
         <div class="debt-numbers">
-          <span>Gesamt ${formatMoney.format(debt.totalAmount || 0)}</span>
-          ${debt.paidSoFar ? `<span class="paid">Bisher bezahlt ${formatMoney.format(debt.paidSoFar)}</span>` : ""}
-          <span>Rate ${formatMoney.format(debt.monthlyPayment)}</span>
-          ${debt.interestAmount ? `<span>Zinsen ${formatMoney.format(debt.interestAmount)}</span>` : ""}
-          ${debt.nominalRate ? `<span>Sollzins ${formatPercentOutput(debt.nominalRate)}</span>` : ""}
-          ${term ? `<span>Laufzeit ${term} Monate</span>` : ""}
-          <span class="paid">Gezahlt ${formatMoney.format(paid)}</span>
-          <strong class="remaining">Rest ${formatMoney.format(remaining)}</strong>
-        </div>
-        <div class="entry-controls">
-          <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-debt-edit="${debt.id}">✎</button>
-          <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-debt-delete="${debt.id}">×</button>
+          ${debtNumberLine("Restschuld", formatMoney.format(remaining), "remaining", "strong")}
+          ${debtNumberLine("Monatliche Rate", formatMoney.format(debt.monthlyPayment))}
+          ${debtNumberLine("Bereits bezahlt", formatMoney.format(paid), "paid")}
+          <div class="debt-progress-line">
+            <span>Fortschritt</span>
+            <strong>${Math.round(progress)}%</strong>
+          </div>
+          <div class="debt-progress" aria-hidden="true">
+            <span style="width: ${progress}%"></span>
+          </div>
         </div>
       </article>
     `;
@@ -890,6 +1121,17 @@ function renderDebts() {
   elements.debtList.querySelectorAll("[data-debt-delete]").forEach((button) => {
     button.addEventListener("click", () => deleteDebt(button.dataset.debtDelete));
   });
+}
+
+function debtNumberLine(label, value, className = "", tag = "span") {
+  const classes = ["debt-number-row", className].filter(Boolean).join(" ");
+  return `<${tag} class="${classes}"><span>${escapeHtml(label)}:</span><b>${escapeHtml(value)}</b></${tag}>`;
+}
+
+function debtProgressPercent(debt, month) {
+  const total = Number(debt.totalAmount || 0);
+  if (total <= 0) return 0;
+  return Math.min(100, Math.max(0, (paidDebt(debt, month) / total) * 100));
 }
 
 function renderAssets() {
@@ -905,14 +1147,16 @@ function renderAssets() {
   elements.assetList.innerHTML = assets.map((asset) => `
     <article class="asset-row">
       <div class="debt-main">
-        <strong>${escapeHtml(asset.name)}</strong>
+        <div class="row-heading">
+          <strong>${escapeHtml(asset.name)}</strong>
+          <span class="entry-controls inline-controls">
+            <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-asset-edit="${asset.id}">✎</button>
+            <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-asset-delete="${asset.id}">×</button>
+          </span>
+        </div>
         <span>${escapeHtml([personName(asset.personId), asset.note || "Plus-Wert"].filter(Boolean).join(" · "))}</span>
       </div>
       <strong class="asset-amount">${formatMoney.format(asset.amount || 0)}</strong>
-      <div class="entry-controls">
-        <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-asset-edit="${asset.id}">✎</button>
-        <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-asset-delete="${asset.id}">×</button>
-      </div>
     </article>
   `).join("");
 
@@ -924,95 +1168,188 @@ function renderAssets() {
   });
 }
 
-function addAsset() {
-  const personId = targetPersonIdForNewItem();
-  const owner = personName(personId);
-  const nextName = window.prompt(`Vermögen für ${owner}: Name`, "");
-  if (nextName === null) return;
-  const name = nextName.trim();
+function openAssetForm(id = "") {
+  const mode = id ? "edit" : "create";
+  const key = id ? `edit-asset:${id}` : "typed:asset";
+  if (isModalOpenFor(key)) {
+    closeEditModal();
+    return;
+  }
+
+  resetAssetForm();
+  activeEditContext = { kind: "asset", mode, id };
+  activeFormKey = key;
+  elements.editModalSlot.append(elements.assetForm);
+  elements.entryForm.hidden = true;
+  elements.assetForm.hidden = false;
+  elements.assetForm.classList.add("modal-form");
+  elements.assetModalActions.hidden = false;
+  elements.assetDeleteButton.hidden = mode !== "edit";
+  elements.assetFormTitle.textContent = mode === "edit" ? "Vermögen bearbeiten" : "Neues Vermögen";
+  fillAssetPersonSelect();
+
+  if (id) {
+    const asset = state.assets.find((item) => item.id === id);
+    if (!asset) return;
+    elements.assetId.value = asset.id;
+    elements.assetPersonInput.value = asset.personId || defaultPersonId();
+    elements.assetNameInput.value = asset.name;
+    elements.assetAmountInput.value = formatMoneyInput(asset.amount);
+    elements.assetNoteInput.value = asset.note || "";
+  } else {
+    elements.assetPersonInput.value = targetPersonIdForNewItem();
+  }
+
+  elements.toggleFormButton.textContent = "+ Neuer Eintrag";
+  elements.editModal.hidden = false;
+  document.body.classList.add("modal-open");
+  focusModalForm(elements.assetForm);
+}
+
+function resetAssetForm() {
+  elements.assetForm.reset();
+  elements.assetId.value = "";
+  elements.assetModalActions.hidden = true;
+  elements.assetDeleteButton.hidden = false;
+  clearFieldErrors();
+}
+
+function fillAssetPersonSelect() {
+  const existing = elements.assetPersonInput.value;
+  const options = [{ id: defaultPersonId(), name: "Gesamt" }, ...visiblePeople()];
+  elements.assetPersonInput.innerHTML = options
+    .map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`)
+    .join("");
+  if (existing && options.some((person) => person.id === existing)) {
+    elements.assetPersonInput.value = existing;
+  } else if (state.selectedPersonId !== "all" && options.some((person) => person.id === state.selectedPersonId)) {
+    elements.assetPersonInput.value = state.selectedPersonId;
+  } else {
+    elements.assetPersonInput.value = options[0].id;
+  }
+}
+
+function saveAsset(event) {
+  event.preventDefault();
+  clearFieldErrors();
+  const name = elements.assetNameInput.value.trim();
+  const amount = parseMoneyInput(elements.assetAmountInput.value);
   if (!name) {
-    showMessage("Bitte Namen eingeben.");
+    setFieldError(elements.assetNameInput, "Bitte Namen eingeben.");
     return;
   }
-
-  const nextAmount = window.prompt("Betrag", "");
-  if (nextAmount === null) return;
-  const amount = parseMoneyInput(nextAmount);
   if (!Number.isFinite(amount) || amount < 0) {
-    showMessage("Betrag ist keine gültige Zahl.");
+    setFieldError(elements.assetAmountInput, "Betrag ist keine gültige Zahl.");
     return;
   }
 
-  state.assets.push({
-    id: createId(),
-    personId,
+  const asset = {
+    id: elements.assetId.value || createId(),
+    personId: elements.assetPersonInput.value || defaultPersonId(),
     name,
     amount,
-    note: "manuell",
-  });
+    note: elements.assetNoteInput.value.trim() || "manuell",
+  };
+  const existingIndex = state.assets.findIndex((item) => item.id === asset.id);
+  if (existingIndex >= 0) {
+    state.assets[existingIndex] = { ...state.assets[existingIndex], ...asset };
+  } else {
+    state.assets.push(asset);
+  }
   persist();
   render();
-  showMessage("Vermögen gespeichert.");
+  showMessage(existingIndex >= 0 ? "Vermögen geändert." : "Vermögen gespeichert.", "success");
+  closeEditModal();
 }
 
 function editAsset(id) {
-  const asset = state.assets.find((item) => item.id === id);
-  if (!asset) return;
-  const nextName = window.prompt("Name ändern", asset.name);
-  if (nextName === null) return;
-  const name = nextName.trim();
-  if (!name) {
-    showMessage("Name darf nicht leer sein.");
-    return;
-  }
-
-  const nextAmount = window.prompt("Betrag ändern", formatMoneyInput(asset.amount));
-  if (nextAmount === null) return;
-  const amount = parseMoneyInput(nextAmount);
-  if (!Number.isFinite(amount) || amount < 0) {
-    showMessage("Betrag ist keine gültige Zahl.");
-    return;
-  }
-
-  asset.name = name;
-  asset.amount = amount;
-  persist();
-  render();
-  showMessage("Vermögen geändert.");
+  openAssetForm(id);
 }
 
 function deleteAsset(id) {
   state.assets = state.assets.filter((asset) => asset.id !== id);
   persist();
   render();
+  if (activeEditContext?.kind === "asset" && activeEditContext.id === id) closeEditModal();
   showMessage("Vermögen gelöscht.");
 }
 
 function renderSummary() {
   const month = elements.monthInput.value;
   const summary = summaryTotals(month);
-  const income = summary.income;
-  const entryExpense = summary.entryExpense;
-  const debtMonthlyCost = summary.debtMonthlyCost;
-  const expense = entryExpense + debtMonthlyCost;
-  const remaining = income - expense;
+  const remaining = summary.balance;
   const totalDebt = summary.totalDebt;
   const totalAssets = summary.totalAssets;
+  const netWorth = summary.netWorth;
 
-  elements.familyIncomeValue.textContent = formatMoney.format(income);
-  elements.familyExpenseValue.textContent = formatMoney.format(expense);
   elements.remainingValue.textContent = formatMoney.format(remaining);
   elements.remainingValue.parentElement.classList.toggle("positive", remaining >= 0);
   elements.remainingValue.parentElement.classList.toggle("negative", remaining < 0);
   elements.totalDebtValue.textContent = formatMoney.format(totalDebt);
   elements.totalAssetValue.textContent = formatMoney.format(totalAssets);
+  elements.netWorthValue.textContent = formatMoney.format(netWorth);
+  elements.netWorthValue.parentElement.classList.toggle("positive", netWorth >= 0);
+  elements.netWorthValue.parentElement.classList.toggle("negative", netWorth < 0);
+  renderMonthComparison(month);
+  renderInsights(month, summary);
   if (activeSummaryType) renderSummaryBreakdown();
+}
+
+function renderInsights(month, summary) {
+  const monthEntries = state.entries
+    .filter(includeInSelectedTotal)
+    .filter((entry) => isEntryActiveInMonth(entry, month));
+  const expenseByCategory = new Map();
+  monthEntries
+    .filter((entry) => entry.type === "expense")
+    .forEach((entry) => {
+      const key = entry.category || "Sonstiges";
+      expenseByCategory.set(key, (expenseByCategory.get(key) || 0) + Number(entry.amount || 0));
+    });
+
+  const topCategories = [...expenseByCategory.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  elements.topCategoryList.innerHTML = topCategories.length
+    ? topCategories.map(([name, amount]) => insightLine(name, formatMoney.format(amount))).join("")
+    : `<p class="empty-state compact-empty">Keine Ausgaben in diesem Monat</p>`;
+
+  const recurringRows = monthEntries
+    .filter((entry) => entry.recurring)
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
+    .slice(0, 3);
+  elements.recurringInsightList.innerHTML = recurringRows.length
+    ? recurringRows.map((entry) => insightLine(entry.description || entry.category, formatMoney.format(entry.amount), entry.endDate ? `endet ${formatMonthName(entry.endDate.slice(0, 7))}` : "läuft weiter")).join("")
+    : `<p class="empty-state compact-empty">Keine Abos im aktuellen Monat</p>`;
+
+  const daysLeft = daysLeftInMonth(month);
+  const dailyBudget = daysLeft > 0 ? summary.balance / daysLeft : summary.balance;
+  elements.restBudgetValue.textContent = formatMoney.format(summary.balance);
+  elements.restBudgetValue.classList.toggle("positive-text", summary.balance >= 0);
+  elements.restBudgetValue.classList.toggle("negative-text", summary.balance < 0);
+  elements.restBudgetHint.textContent = `${formatMoney.format(dailyBudget)} pro verbleibendem Tag`;
+
+  const carryoverItems = carryoverItemsForNextMonth(month);
+  elements.carryoverCount.textContent = String(carryoverItems.length);
+  elements.carryoverHint.textContent = carryoverItems.length
+    ? `${formatMonthName(shiftMonth(month, 1))}: ${carryoverItems.slice(0, 2).map((item) => item.label).join(", ")}${carryoverItems.length > 2 ? " ..." : ""}`
+    : `Keine offenen Übernahmen nach ${formatMonthName(shiftMonth(month, 1))}`;
+}
+
+function insightLine(label, value, hint = "") {
+  return `
+    <div class="insight-line">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      ${hint ? `<small>${escapeHtml(hint)}</small>` : ""}
+    </div>
+  `;
 }
 
 function summaryTotals(month) {
   const monthEntries = state.entries
     .filter(includeInSelectedTotal)
-    .filter((entry) => entry.date.startsWith(month));
+    .filter((entry) => isEntryActiveInMonth(entry, month));
   const income = sum(monthEntries.filter((entry) => entry.type === "income"));
   const entryExpense = sum(monthEntries.filter((entry) => entry.type === "expense"));
   const debtMonthlyCost = activeDebts(month)
@@ -1024,7 +1361,32 @@ function summaryTotals(month) {
   const totalAssets = state.assets
     .filter(includeInSelectedTotal)
     .reduce((total, asset) => total + Number(asset.amount || 0), 0);
-  return { income, entryExpense, debtMonthlyCost, totalDebt, totalAssets };
+  const expense = entryExpense + debtMonthlyCost;
+  const balance = income - expense;
+  const netWorth = totalAssets - totalDebt;
+  return { income, entryExpense, debtMonthlyCost, expense, balance, totalDebt, totalAssets, netWorth };
+}
+
+function renderMonthComparison(month) {
+  const current = summaryTotals(month).balance;
+  const previous = summaryTotals(shiftMonth(month, -1)).balance;
+  const difference = current - previous;
+  setSignedAmount(elements.currentMonthValue, current);
+  setSignedAmount(elements.previousMonthValue, previous);
+  setSignedAmount(elements.monthDifferenceValue, difference);
+}
+
+function setSignedAmount(element, amount) {
+  if (!element) return;
+  element.textContent = `${amount >= 0 ? "+" : ""}${formatMoney.format(amount)}`;
+  element.classList.toggle("positive-text", amount >= 0);
+  element.classList.toggle("negative-text", amount < 0);
+}
+
+function shiftMonth(month, offset) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const date = new Date(year, monthIndex - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function toggleSummaryBreakdown(type) {
@@ -1084,7 +1446,7 @@ function summaryBreakdownData(type) {
   const month = elements.monthInput.value;
   const entries = state.entries
     .filter(includeInSelectedTotal)
-    .filter((entry) => entry.date.startsWith(month));
+    .filter((entry) => isEntryActiveInMonth(entry, month));
   const incomeRows = entries
     .filter((entry) => entry.type === "income")
     .map((entry) => entrySummaryRow(entry, Number(entry.amount || 0)));
@@ -1097,6 +1459,7 @@ function summaryBreakdownData(type) {
     .map((debt) => debtSummaryRow(debt, Number(debt.monthlyPayment || 0), "monatliche Rate"));
   const debtRows = state.debts
     .filter(includeInSelectedTotal)
+    .filter((debt) => isDebtVisibleInMonth(debt, month))
     .map((debt) => debtSummaryRow(debt, remainingDebt(debt, month), "Restschuld"));
   const assetRows = state.assets
     .filter(includeInSelectedTotal)
@@ -1105,6 +1468,10 @@ function summaryBreakdownData(type) {
       meta: [personName(asset.personId), asset.note || ""].filter(Boolean).join(" · "),
       amount: Number(asset.amount || 0),
     }));
+  const netRows = [
+    ...assetRows,
+    ...debtRows.map((row) => ({ ...row, amount: -Math.abs(row.amount), amountClass: "negative-text" })),
+  ];
 
   if (type === "income") {
     return buildSummaryData("Einnahmen gesamt", incomeRows);
@@ -1119,13 +1486,16 @@ function summaryBreakdownData(type) {
       ...expenseRows.map((row) => ({ ...row, amount: -Math.abs(row.amount) })),
       ...debtRateRows.map((row) => ({ ...row, amount: -Math.abs(row.amount) })),
     ];
-    return buildSummaryData("Plus / Minus", balanceRows);
+    return buildSummaryData("Monatliches Ergebnis", balanceRows);
   }
   if (type === "debt") {
-    return buildSummaryData("Restschulden", debtRows);
+    return buildSummaryData("Schulden gesamt", debtRows);
   }
   if (type === "asset") {
-    return buildSummaryData("Vermögen", assetRows);
+    return buildSummaryData("Vermögen gesamt", assetRows);
+  }
+  if (type === "net") {
+    return buildSummaryData("Netto-Status", netRows);
   }
   return null;
 }
@@ -1138,7 +1508,7 @@ function buildSummaryData(title, rows, totalClass = "") {
 function entrySummaryRow(entry, amount) {
   return {
     title: entry.description || entry.category || "Eintrag",
-    meta: [personName(entry.personId), entry.category, displayText(entry.payment), entry.recurring ? "monatlich" : ""].filter(Boolean).join(" · "),
+    meta: [personName(entry.personId), entry.category, displayText(entry.payment), entry.recurring ? "monatlich" : "", statusLabel(entry.status)].filter(Boolean).join(" · "),
     amount,
   };
 }
@@ -1159,23 +1529,21 @@ function editEntry(id) {
   const entry = state.entries.find((item) => item.id === id);
   if (!entry) return;
 
-  const key = `edit-entry:${id}`;
-  if (!elements.entryForm.hidden && activeFormKey === key) {
-    closeForm();
-    return;
-  }
   resetForm({ showTypeChoice: false, type: entry.type });
-  openForm({ showTypeChoice: false, slot: elements.entryFormSlot, key });
+  if (!openEditForm({ type: "entry", id })) return;
   elements.entryId.value = entry.id;
   elements.debtId.value = "";
   elements.typeInput.value = entry.type;
   elements.personInput.value = entry.personId || defaultPersonId();
   elements.dateInput.value = entry.date;
   elements.categoryInput.value = entry.category;
+  elements.customCategoryInput.value = state.categories.some((category) => sameCategory(category.name, entry.category)) || entry.category === "Gehalt" ? "" : entry.category;
   elements.amountInput.value = formatMoneyInput(entry.amount);
   elements.descriptionInput.value = entry.description;
   elements.paymentInput.value = entry.payment;
   elements.recurringInput.checked = entry.recurring;
+  elements.entryEndInput.value = entry.endDate || "";
+  elements.entryStatusInput.value = normalizeStatus(entry.status);
   syncFormMode();
 }
 
@@ -1183,19 +1551,15 @@ function deleteEntry(id) {
   state.entries = state.entries.filter((entry) => entry.id !== id);
   persist();
   render();
+  if (activeEditContext?.kind === "entry" && activeEditContext.id === id) closeEditModal();
 }
 
 function editDebt(id) {
   const debt = state.debts.find((item) => item.id === id);
   if (!debt) return;
 
-  const key = `edit-debt:${id}`;
-  if (!elements.entryForm.hidden && activeFormKey === key) {
-    closeForm();
-    return;
-  }
   resetForm({ showTypeChoice: false, type: "debt" });
-  openForm({ showTypeChoice: false, slot: elements.debtFormSlot, key });
+  if (!openEditForm({ type: "debt", id })) return;
   elements.debtId.value = debt.id;
   elements.entryId.value = "";
   elements.typeInput.value = "debt";
@@ -1206,6 +1570,7 @@ function editDebt(id) {
   elements.debtPaymentInput.value = formatMoneyInput(debt.monthlyPayment);
   elements.debtStartInput.value = debt.startDate;
   elements.debtEndInput.value = debt.endDate;
+  elements.debtStatusInput.value = normalizeStatus(debt.status);
   elements.debtPaymentMethodInput.value = debt.paymentMethod || "";
   elements.debtAccountInput.value = debt.account || "";
   elements.principalInput.value = formatMoneyInput(debt.principalAmount || "");
@@ -1220,6 +1585,21 @@ function deleteDebt(id) {
   state.debts = state.debts.filter((debt) => debt.id !== id);
   persist();
   render();
+  if (activeEditContext?.kind === "debt" && activeEditContext.id === id) closeEditModal();
+}
+
+function deleteActiveEditItem() {
+  if (!activeEditContext) return;
+  const { kind, id } = activeEditContext;
+  if (kind === "entry") {
+    deleteEntry(id);
+    showMessage("Eintrag gelöscht.");
+  } else if (kind === "debt") {
+    deleteDebt(id);
+    showMessage("Schuld gelöscht.");
+  } else if (kind === "asset") {
+    deleteAsset(id);
+  }
 }
 
 async function exportBackup() {
@@ -1280,6 +1660,11 @@ function importBackup(event) {
         const text = String(reader.result);
         const imported = JSON.parse(text);
         if (!Array.isArray(imported.categories) || !Array.isArray(imported.entries)) return;
+        const ok = await confirmCentered(
+          "Daten wiederherstellen ersetzt deine aktuellen Daten. Vorher am besten Daten sichern.",
+          { title: "Daten wiederherstellen" }
+        );
+        if (!ok) return;
         state.categories = imported.categories;
         state.entries = imported.entries.map(normalizeEntry);
         state.debts = Array.isArray(imported.debts) ? imported.debts.map(normalizeDebt) : [];
@@ -1289,6 +1674,7 @@ function importBackup(event) {
       }
       persist();
       ensurePeople();
+      repairCopiedAssets();
       render();
     } catch (error) {
       showMessage(`Import nicht erkannt: ${error.message || "unbekannter Fehler"}`);
@@ -1305,7 +1691,7 @@ function importBackup(event) {
 
 function importXlsx(arrayBuffer) {
   if (!window.XLSX) {
-    showMessage("Excel-Import braucht Internet beim ersten Laden.");
+    showMessage("Excel-Import ist ohne XLSX-Bibliothek nicht verfügbar.", "error");
     return;
   }
   const workbook = window.XLSX.read(arrayBuffer, { type: "array", cellDates: true });
@@ -1369,6 +1755,7 @@ function importBudgetRows(rows) {
         monthlyPayment: Number.isFinite(monthlyDebt) ? monthlyDebt : 0,
         startDate: normalizeDate(item["startdatum"] || item["start"] || ""),
         endDate: normalizeDate(item["enddatum"] || item["bis datum"] || item["bis"] || ""),
+        status: normalizeStatus(item["status"] || ""),
         paymentMethod: item["zahlungsart"] || "",
         account: item["von konto"] || item["konto"] || "",
         note: "",
@@ -1380,17 +1767,19 @@ function importBudgetRows(rows) {
     const amount = parseMoneyInput(item["betrag"] || item["summe"] || "");
     if (!Number.isFinite(amount) || amount <= 0) return;
     const typeText = (item["typ"] || item["art"] || "").toLowerCase();
-    state.entries.push({
-      id: createId(),
-      personId: defaultPersonId(),
-      type: typeText.includes("einnah") || typeText.includes("income") ? "income" : "expense",
-      date: normalizeDate(item["datum"] || "") || monthToDate(elements.monthInput.value),
-      category: item["kategorie"] || "",
-      description: item["beschreibung"] || item["text"] || item["name"] || "",
-      payment: item["zahlungsart"] || "",
-      amount,
-      recurring: /ja|true|monat/i.test(item["monatlich"] || ""),
-    });
+      state.entries.push({
+        id: createId(),
+        personId: defaultPersonId(),
+        type: typeText.includes("einnah") || typeText.includes("income") ? "income" : "expense",
+        date: normalizeDate(item["datum"] || "") || monthToDate(elements.monthInput.value),
+        category: item["kategorie"] || "",
+        description: item["beschreibung"] || item["text"] || item["name"] || "",
+        payment: item["zahlungsart"] || "",
+        amount,
+        recurring: /ja|true|monat/i.test(item["monatlich"] || ""),
+        endDate: normalizeDate(item["enddatum"] || item["bis datum"] || item["bis"] || ""),
+        status: normalizeStatus(item["status"] || ""),
+      });
     importedEntries += 1;
   });
   showMessage(`${importedEntries} Buchungen, ${importedDebts} Schulden importiert.`);
@@ -1437,6 +1826,8 @@ function importPersonalBudgetLayout(rows) {
         payment: "",
         amount: Math.abs(leftAmount),
         recurring: true,
+        endDate: "",
+        status: "open",
       });
       importedEntries += 1;
     }
@@ -1451,6 +1842,7 @@ function importPersonalBudgetLayout(rows) {
           monthlyPayment: 0,
           startDate: "",
           endDate: "",
+          status: "open",
           paymentMethod: "",
           account: "",
           note: "",
@@ -1848,12 +2240,12 @@ elements.personSummaryList.addEventListener("touchstart", (event) => {
 async function duplicateAllAsPerson() {
   const name = await promptCentered(
     "Alles als neue Person duplizieren",
-    "Alle Einnahmen, Ausgaben, Schulden und Vermögen von ALLEN Personen werden auf eine neue Person kopiert. Diese Kopien zählen nicht erneut zur Gesamtsumme.",
-    "Gesamt (Kopie)",
+    "Alle Einnahmen, Ausgaben, Schulden und Vermögen werden auf eine neue Person übernommen. Diese Daten zählen nicht erneut zur Gesamtsumme.",
+    "Neue Person",
     { okLabel: "Duplizieren", placeholder: "Neuer Name" }
   );
   if (name === null) return;
-  const trimmed = name.trim();
+  const trimmed = cleanCopyLabel(name);
   if (!trimmed) {
     showMessage("Name darf nicht leer sein.");
     return;
@@ -1887,15 +2279,15 @@ async function duplicateAllAsPerson() {
 async function duplicatePerson(sourceId) {
   const source = state.people.find((p) => p.id === sourceId);
   if (!source) return;
-  const suggested = `${source.name} (Kopie)`;
+  const suggested = cleanCopyLabel(source.name);
   const name = await promptCentered(
     "Person duplizieren",
-    `Alle Einnahmen, Ausgaben, Schulden und Vermögen von ${source.name} werden auf eine neue Person kopiert. Die Kopien zählen nur in der neuen Person, nicht erneut zur Gesamtsumme.`,
+    `Alle Einnahmen, Ausgaben, Schulden und Vermögen von ${source.name} werden auf eine neue Person übernommen. Diese Daten zählen nur in der neuen Person, nicht erneut zur Gesamtsumme.`,
     suggested,
     { okLabel: "Duplizieren", placeholder: "Neuer Name" }
   );
   if (name === null) return;
-  const trimmed = name.trim();
+  const trimmed = cleanCopyLabel(name);
   if (!trimmed) {
     showMessage("Name darf nicht leer sein.");
     return;
@@ -1992,10 +2384,12 @@ function clearFieldError(target) {
 }
 
 function clearFieldErrors() {
-  elements.entryForm.querySelectorAll(".field-error").forEach((label) => label.classList.remove("field-error"));
-  elements.entryForm.querySelectorAll(".input-error, [aria-invalid='true']").forEach((input) => {
-    input.classList.remove("input-error");
-    input.removeAttribute("aria-invalid");
+  [elements.entryForm, elements.assetForm].forEach((form) => {
+    form.querySelectorAll(".field-error").forEach((label) => label.classList.remove("field-error"));
+    form.querySelectorAll(".input-error, [aria-invalid='true']").forEach((input) => {
+      input.classList.remove("input-error");
+      input.removeAttribute("aria-invalid");
+    });
   });
 }
 
@@ -2060,26 +2454,82 @@ function formatDate(value) {
 }
 
 function remainingDebt(debt, month) {
+  if (!isDebtVisibleInMonth(debt, month) || isDebtClosed(debt)) return 0;
   return Math.max(0, Number(debt.totalAmount || 0) - paidDebt(debt, month));
 }
 
 function paidDebt(debt, month) {
+  if (monthToNumber(month) < debtStartMonthNumber(debt)) return 0;
   const paidMonths = paidMonthsUntil(debt, month);
   const paidAmount = paidMonths * Number(debt.monthlyPayment || 0);
   return Math.min(Number(debt.totalAmount || 0), Number(debt.paidSoFar || 0) + paidAmount);
 }
 
 function paidMonthsUntil(debt, month) {
-  if (!debt.startDate || !debt.endDate || monthToNumber(month) < dateToMonthNumber(debt.startDate)) return 0;
-  const endMonth = debt.endDate.slice(0, 7);
-  const cappedMonth = monthToNumber(month) > monthToNumber(endMonth) ? endMonth : month;
+  if (!debt.startDate || monthToNumber(month) < dateToMonthNumber(debt.startDate)) return 0;
+  const cappedMonth = debt.endDate && monthToNumber(month) > dateToMonthNumber(debt.endDate) ? debt.endDate.slice(0, 7) : month;
   return Math.max(0, monthsBetween(debt.startDate.slice(0, 7), cappedMonth) + 1);
 }
 
 function isDebtActiveInMonth(debt, month) {
-  const afterStart = debt.startDate ? monthToNumber(month) >= dateToMonthNumber(debt.startDate) : true;
-  const beforeEnd = debt.endDate ? monthToNumber(month) <= dateToMonthNumber(debt.endDate) : true;
-  return afterStart && beforeEnd && remainingDebt(debt, month) > 0;
+  return isDebtVisibleInMonth(debt, month) && !isDebtClosed(debt) && remainingDebt(debt, month) > 0;
+}
+
+function isDebtVisibleInMonth(debt, month) {
+  const selected = monthToNumber(month);
+  const start = debtStartMonthNumber(debt);
+  const end = debt.endDate ? dateToMonthNumber(debt.endDate) : Infinity;
+  if (selected < start || selected > end) return false;
+  if (!debt.endDate && isDebtClosed(debt)) return selected === start;
+  return true;
+}
+
+function isDebtClosed(debt) {
+  const total = Number(debt.totalAmount || 0);
+  return normalizeStatus(debt.status) !== "open" || (total > 0 && Number(debt.paidSoFar || 0) >= total);
+}
+
+function debtStartMonthNumber(debt) {
+  return debt.startDate ? dateToMonthNumber(debt.startDate) : -Infinity;
+}
+
+function isEntryActiveInMonth(entry, month) {
+  const entryMonth = entry.date?.slice(0, 7);
+  if (!entryMonth) return false;
+  if (!entry.recurring) return entryMonth === month;
+  if (normalizeStatus(entry.status) === "ended" && !entry.endDate) return entryMonth === month;
+  const selected = monthToNumber(month);
+  const start = monthToNumber(entryMonth);
+  const end = entry.endDate ? dateToMonthNumber(entry.endDate) : Infinity;
+  return selected >= start && selected <= end;
+}
+
+function entryOccurrenceDate(entry, month) {
+  if (!entry.recurring || entry.date?.startsWith(month)) return entry.date;
+  const day = Math.min(Number(entry.date?.slice(8, 10)) || 1, daysInMonth(month));
+  return `${month}-${String(day).padStart(2, "0")}`;
+}
+
+function entryBadges(entry, month) {
+  return [
+    statusBadge(statusLabel(entry.status), `status-${normalizeStatus(entry.status)}`),
+    entry.recurring ? statusBadge("wiederkehrend", "status-recurring") : "",
+    entry.recurring && entry.endDate ? statusBadge(`endet ${formatMonthName(entry.endDate.slice(0, 7))}`, "status-ended") : "",
+    entry.recurring && !entry.date.startsWith(month) ? statusBadge("übernommen", "status-carry") : "",
+  ].filter(Boolean).join("");
+}
+
+function debtBadges(debt, month, active) {
+  const status = isDebtClosed(debt) || remainingDebt(debt, month) <= 0 ? (normalizeStatus(debt.status) === "ended" ? "ended" : "paid") : "open";
+  return [
+    statusBadge(statusLabel(status), `status-${status}`),
+    active ? statusBadge("offen im Monat", "status-carry") : "",
+    debt.endDate ? statusBadge(`endet ${formatMonthName(debt.endDate.slice(0, 7))}`, "status-ended") : statusBadge("ohne Enddatum", "status-recurring"),
+  ].filter(Boolean).join("");
+}
+
+function statusBadge(label, className) {
+  return `<span class="status-badge ${escapeHtml(className)}">${escapeHtml(label)}</span>`;
 }
 
 function monthsBetween(startMonth, endMonth) {
@@ -2106,10 +2556,105 @@ function monthToDate(month) {
   return `${month}-01`;
 }
 
+function daysInMonth(month) {
+  const [year, value] = month.split("-").map(Number);
+  return new Date(year, value, 0).getDate();
+}
+
+function daysLeftInMonth(month) {
+  const [year, value] = month.split("-").map(Number);
+  const now = new Date();
+  const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === value;
+  return isCurrentMonth ? Math.max(1, daysInMonth(month) - now.getDate() + 1) : daysInMonth(month);
+}
+
+function formatMonthName(month) {
+  return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`));
+}
+
+function carryoverItemsForNextMonth(month) {
+  const nextMonth = shiftMonth(month, 1);
+  const recurring = state.entries
+    .filter(includeInSelectedTotal)
+    .filter((entry) => entry.recurring && isEntryActiveInMonth(entry, nextMonth))
+    .map((entry) => ({ label: entry.description || entry.category || "Buchung" }));
+  const debts = state.debts
+    .filter(includeInSelectedTotal)
+    .filter((debt) => isDebtActiveInMonth(debt, nextMonth))
+    .map((debt) => ({ label: debt.creditor || "Schuld" }));
+  return [...recurring, ...debts];
+}
+
 function addMonths(month, amount) {
   const [year, value] = month.split("-").map(Number);
   const date = new Date(year, value - 1 + amount, 1);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function currentLocalMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function defaultBudgetForCategory(name) {
+  const budgets = {
+    Wohnen: 950,
+    Lebensmittel: 350,
+    Transport: 80,
+    Auto: 160,
+    Versicherung: 120,
+    Gesundheit: 80,
+    Freizeit: 150,
+    Reisen: 100,
+    Abos: 60,
+    Schulden: 0,
+    Einkommen: 0,
+    Sonstiges: 100,
+  };
+  return budgets[name] || 0;
+}
+
+function uniqueCategoryNames(names) {
+  const seen = new Set();
+  return names
+    .map((name) => String(name || "").trim())
+    .filter((name) => {
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function sameCategory(a, b) {
+  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+
+function resolveCategoryInput(type) {
+  const custom = elements.customCategoryInput.value.trim();
+  const selected = elements.categoryInput.value.trim();
+  const fallback = type === "income" ? "Einkommen" : "Sonstiges";
+  const categoryName = custom || selected || fallback;
+  if (!state.categories.some((category) => sameCategory(category.name, categoryName))) {
+    state.categories.push({ id: createId(), name: categoryName, budget: 0 });
+  }
+  return categoryName;
+}
+
+function normalizeStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "bezahlt" || status === "paid") return "paid";
+  if (status === "beendet" || status === "erledigt" || status === "ended" || status === "done") return "ended";
+  return ENTRY_STATUSES.includes(status) ? status : "open";
+}
+
+function statusLabel(status) {
+  const labels = {
+    open: "offen",
+    paid: "bezahlt",
+    ended: "beendet",
+  };
+  return labels[normalizeStatus(status)] || "offen";
 }
 
 function normalizeDebt(debt) {
@@ -2123,6 +2668,7 @@ function normalizeDebt(debt) {
     monthlyPayment: Number(debt.monthlyPayment || 0),
     startDate: debt.startDate || (debt.startMonth ? monthToDate(debt.startMonth) : ""),
     endDate: debt.endDate || (debt.endMonth ? monthToDate(debt.endMonth) : ""),
+    status: normalizeStatus(debt.status || (Number(debt.paidSoFar || 0) >= Number(debt.totalAmount || 0) && Number(debt.totalAmount || 0) > 0 ? "paid" : "open")),
     paymentMethod: debt.paymentMethod || "",
     account: debt.account || "",
     principalAmount: Number(debt.principalAmount || 0),
@@ -2146,7 +2692,7 @@ function normalizeAsset(asset) {
 }
 
 function normalizeEntry(entry) {
-  const date = entry.date || monthToDate(new Date().toISOString().slice(0, 7));
+  const date = entry.date || monthToDate(currentLocalMonth());
   const fallbackUpdatedAt = Date.parse(`${date}T12:00:00`) || 0;
   return {
     id: entry.id || createId(),
@@ -2159,6 +2705,8 @@ function normalizeEntry(entry) {
     payment: entry.payment || "",
     amount: Number(entry.amount || 0),
     recurring: Boolean(entry.recurring),
+    endDate: entry.endDate || (entry.endMonth ? monthToDate(entry.endMonth) : ""),
+    status: normalizeStatus(entry.status),
     updatedAt: Number(entry.updatedAt) > 0 ? Number(entry.updatedAt) : fallbackUpdatedAt,
   };
 }
@@ -2166,7 +2714,7 @@ function normalizeEntry(entry) {
 function normalizePerson(person) {
   return {
     id: person.id || createId(),
-    name: String(person.name || "Gemeinsam").trim() || "Gemeinsam",
+    name: cleanCopyLabel(person.name || "Gemeinsam") || "Gemeinsam",
   };
 }
 

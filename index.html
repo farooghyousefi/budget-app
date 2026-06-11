@@ -6,19 +6,19 @@
     <meta name="theme-color" content="#113b3c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Budget" />
-    <title>Budget App</title>
-    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="BudgetUp" />
+    <title>BudgetUp</title>
+    <link rel="manifest" href="manifest.webmanifest?v=77" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=60" />
+    <link rel="stylesheet" href="styles.css?v=77" />
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
         <div>
           <p class="eyebrow">Persönliches Monatsbudget</p>
-          <h1>Budget</h1>
+          <h1>BudgetUp</h1>
         </div>
         <label class="month-picker">
           <span>Monat</span>
@@ -26,26 +26,58 @@
         </label>
       </header>
 
+      <p class="trust-note">Keine Bankverbindung. Keine Registrierung. Deine Daten bleiben bei dir.</p>
+
       <section class="summary-grid" aria-label="Monatsübersicht">
-        <article class="metric income-metric" data-summary="income">
-          <span>Einnahmen gesamt</span>
-          <strong id="familyIncomeValue">0,00 €</strong>
-        </article>
-        <article class="metric expense-metric" data-summary="expense">
-          <span>Ausgaben gesamt</span>
-          <strong id="familyExpenseValue">0,00 €</strong>
-        </article>
         <article class="metric primary" data-summary="balance">
-          <span>Plus / Minus</span>
+          <span>Monatliches Ergebnis</span>
           <strong id="remainingValue">0,00 €</strong>
         </article>
+        <article class="metric asset-metric" data-summary="asset">
+          <span>Vermögen gesamt</span>
+          <strong id="totalAssetValue">0,00 €</strong>
+        </article>
         <article class="metric debt-metric" data-summary="debt">
-          <span>Restschulden</span>
+          <span>Schulden gesamt</span>
           <strong id="totalDebtValue">0,00 €</strong>
         </article>
-        <article class="metric asset-metric" data-summary="asset">
-          <span>Vermögen</span>
-          <strong id="totalAssetValue">0,00 €</strong>
+        <article class="metric net-metric" data-summary="net">
+          <span>Netto-Status</span>
+          <strong id="netWorthValue">0,00 €</strong>
+        </article>
+      </section>
+      <section class="month-compare" aria-label="Monatsvergleich">
+        <article>
+          <span>Dieser Monat</span>
+          <strong id="currentMonthValue">0,00 €</strong>
+        </article>
+        <article>
+          <span>Letzter Monat</span>
+          <strong id="previousMonthValue">0,00 €</strong>
+        </article>
+        <article>
+          <span>Unterschied</span>
+          <strong id="monthDifferenceValue">0,00 €</strong>
+        </article>
+      </section>
+      <section class="insights-grid" aria-label="Reports">
+        <article class="insight-card">
+          <span>Top-Kategorien</span>
+          <div id="topCategoryList" class="insight-list"></div>
+        </article>
+        <article class="insight-card">
+          <span>Wiederkehrend & Abos</span>
+          <div id="recurringInsightList" class="insight-list"></div>
+        </article>
+        <article class="insight-card">
+          <span>Restbudget</span>
+          <strong id="restBudgetValue">0,00 €</strong>
+          <small id="restBudgetHint">Für diesen Monat</small>
+        </article>
+        <article class="insight-card carryover-card">
+          <span>Übernahme</span>
+          <strong id="carryoverCount">0</strong>
+          <small id="carryoverHint">offene Beträge im nächsten Monat</small>
         </article>
       </section>
       <section id="summaryBreakdown" class="panel summary-breakdown" hidden>
@@ -69,12 +101,28 @@
 
       <div class="quick-actions">
         <button id="toggleFormButton" class="submit-button compact-submit" type="button">+ Neuer Eintrag</button>
+        <div class="backup-actions" aria-label="Datensicherung">
+          <button id="exportButton" class="secondary-button backup-button" type="button">Daten sichern</button>
+          <label class="secondary-button import-label backup-button">
+            Daten wiederherstellen
+            <input id="importInput" type="file" accept=".xlsx,.json,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv" />
+          </label>
+        </div>
         <p id="formMessage" class="form-message" role="status"></p>
         <button id="clearButton" class="secondary-button danger-button quick-clear-button" type="button" title="Alles löschen (nur ausgewählte Person oder Gesamt)">Alles löschen</button>
+        <button id="entryMenuButton" class="secondary-button list-menu-button" type="button" title="Menü" aria-label="Menü">☰</button>
+        <div id="entryMenuPanel" class="list-actions entry-menu-panel" hidden>
+          <select id="filterInput" aria-label="Einträge filtern">
+            <option value="all">Alle</option>
+            <option value="expense">Ausgaben</option>
+            <option value="income">Einnahmen</option>
+            <option value="recurring">Monatlich</option>
+          </select>
+          <button id="clearEntriesButton" class="secondary-button danger-button section-clear-button" type="button" title="Nur Buchungen leeren">Buchungen leeren</button>
+        </div>
       </div>
 
       <section class="workspace form-workspace">
-        <div id="mainFormSlot"></div>
         <form id="entryForm" class="panel entry-form" hidden>
           <div class="panel-title">
             <h2 id="formTitle">Einfach eintragen</h2>
@@ -96,12 +144,16 @@
               </select>
             </label>
             <label data-normal-field>
-              <span>Datum</span>
+              <span>Startdatum</span>
               <input id="dateInput" type="date" autocomplete="off" />
             </label>
             <label data-normal-field>
               <span>Kategorie</span>
               <select id="categoryInput"></select>
+            </label>
+            <label data-normal-field>
+              <span>Eigene Kategorie</span>
+              <input id="customCategoryInput" autocomplete="off" maxlength="36" type="text" placeholder="Neue Kategorie eingeben" />
             </label>
             <label data-normal-field>
               <span>Betrag</span>
@@ -125,7 +177,19 @@
             </label>
             <label class="toggle-row" data-normal-field>
               <input id="recurringInput" type="checkbox" />
-              <span>monatlich</span>
+              <span>monatlich wiederholen</span>
+            </label>
+            <label data-normal-field>
+              <span>Enddatum optional</span>
+              <input id="entryEndInput" type="date" autocomplete="off" />
+            </label>
+            <label data-normal-field>
+              <span>Status</span>
+              <select id="entryStatusInput">
+                <option value="open">offen</option>
+                <option value="paid">bezahlt</option>
+                <option value="ended">beendet</option>
+              </select>
             </label>
             <label data-debt-field>
               <span>Bei wem</span>
@@ -152,6 +216,14 @@
             <label data-debt-field>
               <span>Bis Datum</span>
               <input id="debtEndInput" type="date" autocomplete="off" />
+            </label>
+            <label data-debt-field>
+              <span>Status</span>
+              <select id="debtStatusInput">
+                <option value="open">offen</option>
+                <option value="paid">bezahlt</option>
+                <option value="ended">beendet</option>
+              </select>
             </label>
             <label data-debt-field>
               <span>Zahlungsart</span>
@@ -208,6 +280,43 @@
             </label>
           </div>
           <button class="submit-button" type="submit">Speichern</button>
+          <div id="editModalActions" class="edit-modal-actions" hidden>
+            <button id="editCancelButton" class="secondary-button" type="button">Abbrechen</button>
+            <button id="editDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
+          </div>
+        </form>
+
+        <form id="assetForm" class="panel entry-form" hidden>
+          <div class="panel-title">
+            <h2 id="assetFormTitle">Neues Vermögen</h2>
+          </div>
+          <input id="assetId" type="hidden" />
+          <div class="form-grid">
+            <label>
+              <span>Person</span>
+              <select id="assetPersonInput"></select>
+            </label>
+            <label>
+              <span>Name</span>
+              <input id="assetNameInput" autocomplete="off" maxlength="80" type="text" required />
+            </label>
+            <label>
+              <span>Betrag</span>
+              <span class="money-input">
+                <input id="assetAmountInput" inputmode="decimal" type="text" autocomplete="off" required />
+                <span>€</span>
+              </span>
+            </label>
+            <label class="wide">
+              <span>Notiz</span>
+              <input id="assetNoteInput" autocomplete="off" maxlength="80" type="text" />
+            </label>
+          </div>
+          <button class="submit-button" type="submit">Speichern</button>
+          <div id="assetModalActions" class="edit-modal-actions" hidden>
+            <button id="assetCancelButton" class="secondary-button" type="button">Abbrechen</button>
+            <button id="assetDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
+          </div>
         </form>
 
         <section class="panel" hidden>
@@ -221,7 +330,7 @@
 
       <section class="workspace debt-workspace single-list">
         <section class="panel">
-          <details open class="collapsible-panel">
+          <details class="collapsible-panel">
             <summary class="panel-title">
               <h2 id="debtTitle">Schulden</h2>
               <span class="mini-pill debt-pill" id="debtTotalMini">0 €</span>
@@ -232,13 +341,12 @@
             </summary>
             <div id="debtList" class="debt-list"></div>
           </details>
-          <div id="debtFormSlot"></div>
         </section>
       </section>
 
       <section class="workspace asset-workspace single-list">
         <section class="panel">
-          <details open class="collapsible-panel">
+          <details class="collapsible-panel">
             <summary class="panel-title">
               <h2 id="assetTitle">Vermögen</h2>
               <span class="mini-pill asset-pill" id="assetTotalMini">0 €</span>
@@ -253,33 +361,20 @@
       </section>
 
       <section class="panel list-panel">
-        <details open class="collapsible-panel">
+        <details class="collapsible-panel">
           <summary class="panel-title list-title">
             <h2 id="entryTitle">Einnahmen und Ausgaben</h2>
             <span class="panel-totals">
               <span class="mini-pill income-pill" id="entryIncomeMini">0 €</span>
               <span class="mini-pill expense-pill" id="entryExpenseMini">0 €</span>
             </span>
-            <div class="list-actions">
-              <button id="addIncomeButton" class="secondary-button section-add-button income-action" type="button">+ Einnahme</button>
-              <button id="addExpenseButton" class="secondary-button section-add-button expense-action" type="button">+ Ausgabe</button>
-              <select id="filterInput" aria-label="Einträge filtern">
-                <option value="all">Alle</option>
-                <option value="expense">Ausgaben</option>
-                <option value="income">Einnahmen</option>
-                <option value="recurring">Monatlich</option>
-              </select>
-              <button id="exportButton" class="secondary-button" type="button">Export</button>
-              <label class="secondary-button import-label">
-                Import Excel/CSV
-                <input id="importInput" type="file" accept=".xlsx,.json,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv" />
-              </label>
-              <button id="clearEntriesButton" class="secondary-button danger-button section-clear-button" type="button" title="Nur Buchungen leeren">Buchungen leeren</button>
-            </div>
           </summary>
+          <div class="entry-toolbar">
+            <button id="addIncomeButton" class="secondary-button section-add-button income-action" type="button">+ Einnahme</button>
+            <button id="addExpenseButton" class="secondary-button section-add-button expense-action" type="button">+ Ausgabe</button>
+          </div>
           <div id="entryList" class="entry-list"></div>
         </details>
-        <div id="entryFormSlot"></div>
       </section>
     </main>
 
@@ -293,6 +388,13 @@
           <button id="promptDialogCancel" class="secondary-button" type="button">Abbrechen</button>
           <button id="promptDialogOk" class="submit-button compact-submit" type="button">OK</button>
         </div>
+      </div>
+    </div>
+
+    <div id="editModal" class="edit-modal" hidden role="dialog" aria-modal="true" aria-labelledby="formTitle">
+      <div id="editModalBackdrop" class="edit-modal-backdrop"></div>
+      <div class="edit-modal-box">
+        <div id="editModalSlot"></div>
       </div>
     </div>
 
@@ -334,7 +436,6 @@
       </div>
     </template>
 
-    <script src="vendor/xlsx.full.min.js?v=60" defer></script>
-    <script src="app.js?v=60" defer></script>
+    <script src="app.js?v=77" defer></script>
   </body>
 </html>

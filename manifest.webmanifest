@@ -1,11 +1,11 @@
 {
-  "name": "Budget App",
-  "short_name": "Budget",
-  "description": "Persönliches Monatsbudget und Ausgabenverwaltung.",
-  "start_url": "./index.html",
+  "name": "BudgetUp",
+  "short_name": "BudgetUp",
+  "description": "Moderner Budget- und Finanzmanager für Einnahmen, Ausgaben, Schulden und Vermögen.",
+  "start_url": "./index.html?v=77",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#eef3ef",
+  "background_color": "#edf4f1",
   "theme_color": "#113b3c",
   "icons": [
     {
