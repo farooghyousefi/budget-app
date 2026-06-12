@@ -1,11 +1,11 @@
-const CACHE_NAME = "budget-app-v77";
+const CACHE_NAME = "budget-app-v78";
 const ASSETS = [
   "./",
   "./index.html",
-  "./index.html?v=77",
-  "./styles.css?v=77",
-  "./app.js?v=77",
-  "./manifest.webmanifest?v=77",
+  "./index.html?v=78",
+  "./styles.css?v=78",
+  "./app.js?v=78",
+  "./manifest.webmanifest?v=78",
   "./icon.svg",
   "./icons/icon-180.png",
   "./icons/icon-192.png",

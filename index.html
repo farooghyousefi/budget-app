@@ -8,17 +8,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=77" />
+    <link rel="manifest" href="manifest.webmanifest?v=78" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=77" />
+    <link rel="stylesheet" href="styles.css?v=78" />
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Persönliches Monatsbudget</p>
-          <h1>BudgetUp</h1>
+      <header class="topbar app-topbar">
+        <button class="round-action" type="button" aria-label="Info">i</button>
+        <div class="app-title-block">
+          <p class="eyebrow">BudgetUp</p>
+          <h1 id="viewTitle">Übersicht</h1>
         </div>
         <label class="month-picker">
           <span>Monat</span>
@@ -26,357 +27,451 @@
         </label>
       </header>
 
-      <p class="trust-note">Keine Bankverbindung. Keine Registrierung. Deine Daten bleiben bei dir.</p>
+      <p id="formMessage" class="form-message app-toast" role="status"></p>
 
-      <section class="summary-grid" aria-label="Monatsübersicht">
-        <article class="metric primary" data-summary="balance">
-          <span>Monatliches Ergebnis</span>
+      <section class="app-view" data-view="overview">
+        <section class="hero-balance-card">
+          <span id="overviewMonthLabel">Aktueller Monat</span>
           <strong id="remainingValue">0,00 €</strong>
-        </article>
-        <article class="metric asset-metric" data-summary="asset">
-          <span>Vermögen gesamt</span>
-          <strong id="totalAssetValue">0,00 €</strong>
-        </article>
-        <article class="metric debt-metric" data-summary="debt">
-          <span>Schulden gesamt</span>
-          <strong id="totalDebtValue">0,00 €</strong>
-        </article>
-        <article class="metric net-metric" data-summary="net">
-          <span>Netto-Status</span>
-          <strong id="netWorthValue">0,00 €</strong>
-        </article>
-      </section>
-      <section class="month-compare" aria-label="Monatsvergleich">
-        <article>
-          <span>Dieser Monat</span>
-          <strong id="currentMonthValue">0,00 €</strong>
-        </article>
-        <article>
-          <span>Letzter Monat</span>
-          <strong id="previousMonthValue">0,00 €</strong>
-        </article>
-        <article>
-          <span>Unterschied</span>
-          <strong id="monthDifferenceValue">0,00 €</strong>
-        </article>
-      </section>
-      <section class="insights-grid" aria-label="Reports">
-        <article class="insight-card">
-          <span>Top-Kategorien</span>
-          <div id="topCategoryList" class="insight-list"></div>
-        </article>
-        <article class="insight-card">
-          <span>Wiederkehrend & Abos</span>
-          <div id="recurringInsightList" class="insight-list"></div>
-        </article>
-        <article class="insight-card">
-          <span>Restbudget</span>
-          <strong id="restBudgetValue">0,00 €</strong>
-          <small id="restBudgetHint">Für diesen Monat</small>
-        </article>
-        <article class="insight-card carryover-card">
-          <span>Übernahme</span>
-          <strong id="carryoverCount">0</strong>
-          <small id="carryoverHint">offene Beträge im nächsten Monat</small>
-        </article>
-      </section>
-      <section id="summaryBreakdown" class="panel summary-breakdown" hidden>
-        <div class="panel-title">
-          <h2 id="summaryBreakdownTitle">Zusammensetzung</h2>
-          <button id="summaryBreakdownClose" class="icon-button" type="button" title="Schließen" aria-label="Schließen">×</button>
-        </div>
-        <div id="summaryBreakdownList" class="summary-breakdown-list"></div>
-      </section>
-
-      <section class="panel people-panel">
-        <div class="panel-title">
-          <h2>Familie</h2>
-          <div class="person-add">
-            <input id="personNameInput" maxlength="80" type="text" placeholder="Vorname Nachname" autocomplete="off" />
-            <button id="addPersonButton" class="icon-button" type="button" title="Person hinzufügen" aria-label="Person hinzufügen">+</button>
-          </div>
-        </div>
-        <div id="personSummaryList" class="person-summary-list"></div>
-      </section>
-
-      <div class="quick-actions">
-        <button id="toggleFormButton" class="submit-button compact-submit" type="button">+ Neuer Eintrag</button>
-        <div class="backup-actions" aria-label="Datensicherung">
-          <button id="exportButton" class="secondary-button backup-button" type="button">Daten sichern</button>
-          <label class="secondary-button import-label backup-button">
-            Daten wiederherstellen
-            <input id="importInput" type="file" accept=".xlsx,.json,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv" />
-          </label>
-        </div>
-        <p id="formMessage" class="form-message" role="status"></p>
-        <button id="clearButton" class="secondary-button danger-button quick-clear-button" type="button" title="Alles löschen (nur ausgewählte Person oder Gesamt)">Alles löschen</button>
-        <button id="entryMenuButton" class="secondary-button list-menu-button" type="button" title="Menü" aria-label="Menü">☰</button>
-        <div id="entryMenuPanel" class="list-actions entry-menu-panel" hidden>
-          <select id="filterInput" aria-label="Einträge filtern">
-            <option value="all">Alle</option>
-            <option value="expense">Ausgaben</option>
-            <option value="income">Einnahmen</option>
-            <option value="recurring">Monatlich</option>
-          </select>
-          <button id="clearEntriesButton" class="secondary-button danger-button section-clear-button" type="button" title="Nur Buchungen leeren">Buchungen leeren</button>
-        </div>
-      </div>
-
-      <section class="workspace form-workspace">
-        <form id="entryForm" class="panel entry-form" hidden>
+          <small>Monatliches Ergebnis</small>
+        </section>
+        <section class="summary-grid overview-summary" aria-label="Monatsübersicht">
+          <article class="metric income-metric" data-summary="income">
+            <span>Einnahmen</span>
+            <strong id="overviewIncomeValue">0,00 €</strong>
+          </article>
+          <article class="metric expense-metric" data-summary="expense">
+            <span>Ausgaben</span>
+            <strong id="overviewExpenseValue">0,00 €</strong>
+          </article>
+          <article class="metric debt-metric" data-summary="debt">
+            <span>Offene Schulden</span>
+            <strong id="totalDebtValue">0,00 €</strong>
+          </article>
+          <article class="metric net-metric" data-summary="net">
+            <span>Netto-Status</span>
+            <strong id="netWorthValue">0,00 €</strong>
+          </article>
+        </section>
+        <section class="overview-cards">
+          <article class="insight-card">
+            <span>Restbudget</span>
+            <strong id="restBudgetValue">0,00 €</strong>
+            <small id="restBudgetHint">Für diesen Monat</small>
+          </article>
+          <article class="insight-card">
+            <span>Wiederkehrend</span>
+            <strong id="overviewRecurringValue">0,00 €</strong>
+            <small id="overviewRecurringHint">monatliche Fixkosten</small>
+          </article>
+          <article class="insight-card carryover-card">
+            <span>Übernahme</span>
+            <strong id="carryoverCount">0</strong>
+            <small id="carryoverHint">offene Beträge im nächsten Monat</small>
+          </article>
+        </section>
+        <section id="summaryBreakdown" class="panel summary-breakdown" hidden>
           <div class="panel-title">
-            <h2 id="formTitle">Einfach eintragen</h2>
-            <button id="resetFormButton" class="icon-button" type="button" title="Formular leeren" aria-label="Formular leeren">↺</button>
+            <h2 id="summaryBreakdownTitle">Zusammensetzung</h2>
+            <button id="summaryBreakdownClose" class="icon-button" type="button" title="Schließen" aria-label="Schließen">×</button>
           </div>
-          <input id="entryId" type="hidden" />
-          <input id="debtId" type="hidden" />
-          <div class="form-grid">
-            <label>
-              <span>Person</span>
-              <select id="personInput"></select>
-            </label>
-            <label data-type-field>
-              <span>Typ</span>
-              <select id="typeInput">
-                <option value="expense">Ausgabe</option>
-                <option value="income">Einnahme</option>
-                <option value="debt">Schuld / Kredit</option>
-              </select>
-            </label>
-            <label data-normal-field>
-              <span>Startdatum</span>
-              <input id="dateInput" type="date" autocomplete="off" />
-            </label>
-            <label data-normal-field>
-              <span>Kategorie</span>
-              <select id="categoryInput"></select>
-            </label>
-            <label data-normal-field>
-              <span>Eigene Kategorie</span>
-              <input id="customCategoryInput" autocomplete="off" maxlength="36" type="text" placeholder="Neue Kategorie eingeben" />
-            </label>
-            <label data-normal-field>
-              <span>Betrag</span>
-              <span class="money-input">
-                <input id="amountInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-            <label class="wide" data-normal-field>
-              <span>Beschreibung</span>
-              <input id="descriptionInput" autocomplete="off" maxlength="80" type="text" />
-            </label>
-            <label data-normal-field>
-              <span>Zahlungsart</span>
-              <select id="paymentInput">
-                <option>Karte</option>
-                <option>Bar</option>
-                <option>Überweisung</option>
-                <option>Lastschrift</option>
-              </select>
-            </label>
-            <label class="toggle-row" data-normal-field>
-              <input id="recurringInput" type="checkbox" />
-              <span>monatlich wiederholen</span>
-            </label>
-            <label data-normal-field>
-              <span>Enddatum optional</span>
-              <input id="entryEndInput" type="date" autocomplete="off" />
-            </label>
-            <label data-normal-field>
-              <span>Status</span>
-              <select id="entryStatusInput">
-                <option value="open">offen</option>
-                <option value="paid">bezahlt</option>
-                <option value="ended">beendet</option>
-              </select>
-            </label>
-            <label data-debt-field>
-              <span>Bei wem</span>
-              <input id="creditorInput" autocomplete="off" maxlength="60" type="text" />
-            </label>
-            <label data-debt-field>
-              <span>Gesamtschuld</span>
-              <span class="money-input">
-                <input id="debtTotalInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-            <label data-debt-field>
-              <span>Bisher bezahlt</span>
-              <span class="money-input">
-                <input id="paidSoFarInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-            <label data-debt-field>
-              <span>Startdatum</span>
-              <input id="debtStartInput" type="date" autocomplete="off" />
-            </label>
-            <label data-debt-field>
-              <span>Bis Datum</span>
-              <input id="debtEndInput" type="date" autocomplete="off" />
-            </label>
-            <label data-debt-field>
-              <span>Status</span>
-              <select id="debtStatusInput">
-                <option value="open">offen</option>
-                <option value="paid">bezahlt</option>
-                <option value="ended">beendet</option>
-              </select>
-            </label>
-            <label data-debt-field>
-              <span>Zahlungsart</span>
-              <select id="debtPaymentMethodInput">
-                <option value=""></option>
-                <option>Lastschrift</option>
-                <option>Überweisung</option>
-                <option>Karte</option>
-                <option>Bar</option>
-              </select>
-            </label>
-            <label data-debt-field>
-              <span>Von Konto</span>
-              <input id="debtAccountInput" autocomplete="off" maxlength="60" type="text" />
-            </label>
-            <label data-debt-field>
-              <span>Monatlich</span>
-              <span class="money-input">
-                <input id="debtPaymentInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-            <label data-debt-field>
-              <span>Nettokredit</span>
-              <span class="money-input">
-                <input id="principalInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-            <label data-debt-field>
-              <span>Zinsen gesamt</span>
-              <span class="money-input">
-                <input id="interestInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-            <label data-debt-field>
-              <span>Sollzins pro Jahr</span>
-              <span class="percent-input">
-                <input id="nominalRateInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>%</span>
-              </span>
-            </label>
-            <label data-debt-field>
-              <span>Laufzeit in Monaten</span>
-              <input id="termInput" inputmode="numeric" type="number" min="0" autocomplete="off" />
-            </label>
-            <label data-debt-field>
-              <span>Letzte Rate</span>
-              <span class="money-input">
-                <input id="finalPaymentInput" inputmode="decimal" type="text" autocomplete="off" />
-                <span>€</span>
-              </span>
-            </label>
-          </div>
-          <button class="submit-button" type="submit">Speichern</button>
-          <div id="editModalActions" class="edit-modal-actions" hidden>
-            <button id="editCancelButton" class="secondary-button" type="button">Abbrechen</button>
-            <button id="editDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
-          </div>
-        </form>
-
-        <form id="assetForm" class="panel entry-form" hidden>
-          <div class="panel-title">
-            <h2 id="assetFormTitle">Neues Vermögen</h2>
-          </div>
-          <input id="assetId" type="hidden" />
-          <div class="form-grid">
-            <label>
-              <span>Person</span>
-              <select id="assetPersonInput"></select>
-            </label>
-            <label>
-              <span>Name</span>
-              <input id="assetNameInput" autocomplete="off" maxlength="80" type="text" required />
-            </label>
-            <label>
-              <span>Betrag</span>
-              <span class="money-input">
-                <input id="assetAmountInput" inputmode="decimal" type="text" autocomplete="off" required />
-                <span>€</span>
-              </span>
-            </label>
-            <label class="wide">
-              <span>Notiz</span>
-              <input id="assetNoteInput" autocomplete="off" maxlength="80" type="text" />
-            </label>
-          </div>
-          <button class="submit-button" type="submit">Speichern</button>
-          <div id="assetModalActions" class="edit-modal-actions" hidden>
-            <button id="assetCancelButton" class="secondary-button" type="button">Abbrechen</button>
-            <button id="assetDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
-          </div>
-        </form>
-
-        <section class="panel" hidden>
-          <div class="panel-title">
-            <h2>Kategorien</h2>
-            <button id="addCategoryButton" class="icon-button" type="button" title="Kategorie hinzufügen" aria-label="Kategorie hinzufügen">+</button>
-          </div>
-          <div id="categoryList" class="category-list"></div>
+          <div id="summaryBreakdownList" class="summary-breakdown-list"></div>
+        </section>
+        <section class="month-compare" aria-label="Monatsvergleich">
+          <article>
+            <span>Dieser Monat</span>
+            <strong id="currentMonthValue">0,00 €</strong>
+          </article>
+          <article>
+            <span>Letzter Monat</span>
+            <strong id="previousMonthValue">0,00 €</strong>
+          </article>
+          <article>
+            <span>Unterschied</span>
+            <strong id="monthDifferenceValue">0,00 €</strong>
+          </article>
         </section>
       </section>
 
-      <section class="workspace debt-workspace single-list">
-        <section class="panel">
-          <details class="collapsible-panel">
-            <summary class="panel-title">
-              <h2 id="debtTitle">Schulden</h2>
-              <span class="mini-pill debt-pill" id="debtTotalMini">0 €</span>
-              <span class="section-actions">
-                <button id="addDebtButton" class="secondary-button section-add-button" type="button">+ Schuld</button>
-                <button id="clearDebtsButton" class="secondary-button danger-button section-clear-button" type="button" title="Alle Schulden leeren">Schulden leeren</button>
-              </span>
-            </summary>
-            <div id="debtList" class="debt-list"></div>
-          </details>
+      <section class="app-view" data-view="accounts" hidden>
+        <section class="panel account-summary-card">
+          <span>Nettovermögen</span>
+          <strong id="accountsNetWorthValue">0,00 €</strong>
+          <div class="account-summary-lines">
+            <span>Vermögen <b id="totalAssetValue">0,00 €</b></span>
+            <span>Schulden <b id="accountsDebtValue">0,00 €</b></span>
+          </div>
         </section>
-      </section>
-
-      <section class="workspace asset-workspace single-list">
-        <section class="panel">
-          <details class="collapsible-panel">
-            <summary class="panel-title">
+        <section class="panel people-panel">
+          <div class="panel-title">
+            <h2>Familie</h2>
+            <div class="person-add">
+              <input id="personNameInput" maxlength="80" type="text" placeholder="Vorname Nachname" autocomplete="off" />
+              <button id="addPersonButton" class="icon-button" type="button" title="Person hinzufügen" aria-label="Person hinzufügen">+</button>
+            </div>
+          </div>
+          <div id="personSummaryList" class="person-summary-list"></div>
+        </section>
+        <section class="workspace asset-workspace single-list">
+          <section class="panel">
+            <div class="panel-title">
               <h2 id="assetTitle">Vermögen</h2>
               <span class="mini-pill asset-pill" id="assetTotalMini">0 €</span>
-              <span class="section-actions">
-                <button id="addAssetButton" class="secondary-button section-add-button" type="button">+ Vermögen</button>
-                <button id="clearAssetsButton" class="secondary-button danger-button section-clear-button" type="button" title="Alle Vermögen leeren">Vermögen leeren</button>
-              </span>
-            </summary>
+            </div>
             <div id="assetList" class="asset-list"></div>
-          </details>
+          </section>
+        </section>
+        <section class="workspace debt-workspace single-list">
+          <section class="panel">
+            <div class="panel-title">
+              <h2 id="debtTitle">Schulden</h2>
+              <span class="mini-pill debt-pill" id="debtTotalMini">0 €</span>
+            </div>
+            <div id="debtList" class="debt-list"></div>
+          </section>
         </section>
       </section>
 
-      <section class="panel list-panel">
-        <details class="collapsible-panel">
-          <summary class="panel-title list-title">
-            <h2 id="entryTitle">Einnahmen und Ausgaben</h2>
+      <section class="app-view" data-view="budgets" hidden>
+        <section class="panel">
+          <div class="panel-title">
+            <h2>Budgets</h2>
+            <span class="mini-pill" id="budgetOverviewMini">0 € übrig</span>
+          </div>
+          <div id="budgetList" class="budget-list"></div>
+        </section>
+      </section>
+
+      <section class="app-view" data-view="transactions" hidden>
+        <section class="panel list-panel">
+          <div class="panel-title list-title">
+            <h2 id="entryTitle">Buchungen</h2>
             <span class="panel-totals">
               <span class="mini-pill income-pill" id="entryIncomeMini">0 €</span>
               <span class="mini-pill expense-pill" id="entryExpenseMini">0 €</span>
             </span>
-          </summary>
+          </div>
           <div class="entry-toolbar">
-            <button id="addIncomeButton" class="secondary-button section-add-button income-action" type="button">+ Einnahme</button>
-            <button id="addExpenseButton" class="secondary-button section-add-button expense-action" type="button">+ Ausgabe</button>
+            <input id="transactionSearchInput" type="search" placeholder="Suchen" autocomplete="off" />
+            <select id="filterInput" aria-label="Einträge filtern">
+              <option value="all">Alle</option>
+              <option value="expense">Ausgaben</option>
+              <option value="income">Einnahmen</option>
+              <option value="recurring">Monatlich</option>
+            </select>
+            <button id="entryMenuButton" class="secondary-button list-menu-button" type="button" title="Menü" aria-label="Menü">☰</button>
+            <div id="entryMenuPanel" class="list-actions entry-menu-panel" hidden>
+              <button id="clearEntriesButton" class="secondary-button danger-button section-clear-button" type="button" title="Nur Buchungen leeren">Buchungen leeren</button>
+            </div>
           </div>
           <div id="entryList" class="entry-list"></div>
-        </details>
+        </section>
+      </section>
+
+      <section class="app-view" data-view="calendar" hidden>
+        <section class="panel calendar-panel">
+          <div class="panel-title calendar-title-row">
+            <button id="calendarPrevButton" class="icon-button" type="button" aria-label="Vorheriger Monat">‹</button>
+            <div>
+              <h2 id="calendarTitle">Kalender</h2>
+              <span id="calendarSubtitle">Monatsansicht</span>
+            </div>
+            <button id="calendarNextButton" class="icon-button" type="button" aria-label="Nächster Monat">›</button>
+          </div>
+          <button id="calendarTodayButton" class="secondary-button calendar-today-button" type="button">Heute</button>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-title">
+            <h2 id="calendarDayTitle">Ausgewählter Tag</h2>
+            <span id="calendarDayTotal" class="mini-pill">0 €</span>
+          </div>
+          <div id="calendarDayList" class="entry-list"></div>
+        </section>
+      </section>
+
+      <section class="app-view" data-view="reports" hidden>
+        <section class="insights-grid reports-grid" aria-label="Reports">
+          <article class="insight-card">
+            <span>Top-Kategorien</span>
+            <div id="topCategoryList" class="insight-list"></div>
+          </article>
+          <article class="insight-card">
+            <span>Wiederkehrend & Abos</span>
+            <div id="recurringInsightList" class="insight-list"></div>
+          </article>
+          <article class="insight-card">
+            <span>Einnahmen vs. Ausgaben</span>
+            <strong id="reportsRatioValue">0 %</strong>
+            <small id="reportsRatioHint">Ausgabenquote</small>
+          </article>
+          <article class="insight-card">
+            <span>Netto-Insight</span>
+            <strong id="reportsNetWorthValue">0,00 €</strong>
+            <small id="reportsNetWorthHint">Vermögen minus Schulden</small>
+          </article>
+        </section>
+        <section class="panel">
+          <div class="panel-title">
+            <h2>Monatsentwicklung</h2>
+            <span class="mini-pill" id="reportsMonthMini">0 €</span>
+          </div>
+          <div id="reportsTrendList" class="summary-breakdown-list"></div>
+        </section>
+      </section>
+
+      <section class="utility-actions" aria-label="Datensicherung">
+        <button id="exportButton" class="secondary-button backup-button" type="button">Daten sichern</button>
+        <label class="secondary-button import-label backup-button">
+          Daten wiederherstellen
+          <input id="importInput" type="file" accept=".xlsx,.json,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv" />
+        </label>
+        <button id="clearButton" class="secondary-button danger-button quick-clear-button" type="button" title="Alles löschen (nur ausgewählte Person oder Gesamt)">Alles löschen</button>
       </section>
     </main>
+
+    <div class="fab-layer">
+      <div id="fabMenu" class="fab-menu" hidden>
+        <button id="addExpenseButton" type="button">Ausgabe hinzufügen</button>
+        <button id="addIncomeButton" type="button">Einnahme hinzufügen</button>
+        <button id="addDebtButton" type="button">Schuld hinzufügen</button>
+        <button id="addAssetButton" type="button">Vermögen hinzufügen</button>
+        <button id="addCategoryButton" type="button">Budget/Kategorie</button>
+      </div>
+      <button id="fabButton" class="fab-button" type="button" aria-label="Hinzufügen" aria-expanded="false">+</button>
+    </div>
+
+    <nav class="bottom-nav" aria-label="Hauptnavigation">
+      <button class="bottom-nav-item active" type="button" data-view-target="overview"><span>□</span>Overview</button>
+      <button class="bottom-nav-item" type="button" data-view-target="accounts"><span>▣</span>Accounts</button>
+      <button class="bottom-nav-item" type="button" data-view-target="budgets"><span>◔</span>Budgets</button>
+      <button class="bottom-nav-item" type="button" data-view-target="transactions"><span>☷</span>Transactions</button>
+      <button class="bottom-nav-item" type="button" data-view-target="calendar"><span>◫</span>Calendar</button>
+      <button class="bottom-nav-item" type="button" data-view-target="reports"><span>◕</span>Reports</button>
+    </nav>
+
+    <div class="form-templates" hidden>
+      <form id="entryForm" class="panel entry-form" hidden>
+        <div class="panel-title">
+          <h2 id="formTitle">Einfach eintragen</h2>
+          <button id="resetFormButton" class="icon-button" type="button" title="Formular leeren" aria-label="Formular leeren">↺</button>
+        </div>
+        <input id="entryId" type="hidden" />
+        <input id="debtId" type="hidden" />
+        <div class="form-grid">
+          <label>
+            <span>Person</span>
+            <select id="personInput"></select>
+          </label>
+          <label data-type-field>
+            <span>Typ</span>
+            <select id="typeInput">
+              <option value="expense">Ausgabe</option>
+              <option value="income">Einnahme</option>
+              <option value="debt">Schuld / Kredit</option>
+            </select>
+          </label>
+          <label data-normal-field>
+            <span>Startdatum</span>
+            <input id="dateInput" type="date" autocomplete="off" />
+          </label>
+          <label data-normal-field>
+            <span>Kategorie</span>
+            <select id="categoryInput"></select>
+          </label>
+          <label data-normal-field>
+            <span>Eigene Kategorie</span>
+            <input id="customCategoryInput" autocomplete="off" maxlength="36" type="text" placeholder="Neue Kategorie eingeben" />
+          </label>
+          <label data-normal-field>
+            <span>Betrag</span>
+            <span class="money-input">
+              <input id="amountInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+          <label class="wide" data-normal-field>
+            <span>Beschreibung</span>
+            <input id="descriptionInput" autocomplete="off" maxlength="80" type="text" />
+          </label>
+          <label data-normal-field>
+            <span>Zahlungsart</span>
+            <select id="paymentInput">
+              <option>Karte</option>
+              <option>Bar</option>
+              <option>Überweisung</option>
+              <option>Lastschrift</option>
+            </select>
+          </label>
+          <label class="toggle-row" data-normal-field>
+            <input id="recurringInput" type="checkbox" />
+            <span>monatlich wiederholen</span>
+          </label>
+          <label data-normal-field>
+            <span>Enddatum optional</span>
+            <input id="entryEndInput" type="date" autocomplete="off" />
+          </label>
+          <label data-normal-field>
+            <span>Status</span>
+            <select id="entryStatusInput">
+              <option value="open">offen</option>
+              <option value="paid">bezahlt</option>
+              <option value="ended">beendet</option>
+            </select>
+          </label>
+          <label data-debt-field>
+            <span>Bei wem</span>
+            <input id="creditorInput" autocomplete="off" maxlength="60" type="text" />
+          </label>
+          <label data-debt-field>
+            <span>Gesamtschuld</span>
+            <span class="money-input">
+              <input id="debtTotalInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+          <label data-debt-field>
+            <span>Bisher bezahlt</span>
+            <span class="money-input">
+              <input id="paidSoFarInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+          <label data-debt-field>
+            <span>Startdatum</span>
+            <input id="debtStartInput" type="date" autocomplete="off" />
+          </label>
+          <label data-debt-field>
+            <span>Bis Datum</span>
+            <input id="debtEndInput" type="date" autocomplete="off" />
+          </label>
+          <label data-debt-field>
+            <span>Status</span>
+            <select id="debtStatusInput">
+              <option value="open">offen</option>
+              <option value="paid">bezahlt</option>
+              <option value="ended">beendet</option>
+            </select>
+          </label>
+          <label data-debt-field>
+            <span>Zahlungsart</span>
+            <select id="debtPaymentMethodInput">
+              <option value=""></option>
+              <option>Lastschrift</option>
+              <option>Überweisung</option>
+              <option>Karte</option>
+              <option>Bar</option>
+            </select>
+          </label>
+          <label data-debt-field>
+            <span>Von Konto</span>
+            <input id="debtAccountInput" autocomplete="off" maxlength="60" type="text" />
+          </label>
+          <label data-debt-field>
+            <span>Monatlich</span>
+            <span class="money-input">
+              <input id="debtPaymentInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+          <label data-debt-field>
+            <span>Nettokredit</span>
+            <span class="money-input">
+              <input id="principalInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+          <label data-debt-field>
+            <span>Zinsen gesamt</span>
+            <span class="money-input">
+              <input id="interestInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+          <label data-debt-field>
+            <span>Sollzins pro Jahr</span>
+            <span class="percent-input">
+              <input id="nominalRateInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>%</span>
+            </span>
+          </label>
+          <label data-debt-field>
+            <span>Laufzeit in Monaten</span>
+            <input id="termInput" inputmode="numeric" type="number" min="0" autocomplete="off" />
+          </label>
+          <label data-debt-field>
+            <span>Letzte Rate</span>
+            <span class="money-input">
+              <input id="finalPaymentInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+        </div>
+        <button class="submit-button" type="submit">Speichern</button>
+        <div id="editModalActions" class="edit-modal-actions" hidden>
+          <button id="editCancelButton" class="secondary-button" type="button">Abbrechen</button>
+          <button id="editDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
+        </div>
+      </form>
+
+      <form id="assetForm" class="panel entry-form" hidden>
+        <div class="panel-title">
+          <h2 id="assetFormTitle">Neues Vermögen</h2>
+        </div>
+        <input id="assetId" type="hidden" />
+        <div class="form-grid">
+          <label>
+            <span>Person</span>
+            <select id="assetPersonInput"></select>
+          </label>
+          <label>
+            <span>Name</span>
+            <input id="assetNameInput" autocomplete="off" maxlength="80" type="text" required />
+          </label>
+          <label>
+            <span>Betrag</span>
+            <span class="money-input">
+              <input id="assetAmountInput" inputmode="decimal" type="text" autocomplete="off" required />
+              <span>€</span>
+            </span>
+          </label>
+          <label class="wide">
+            <span>Notiz</span>
+            <input id="assetNoteInput" autocomplete="off" maxlength="80" type="text" />
+          </label>
+        </div>
+        <button class="submit-button" type="submit">Speichern</button>
+        <div id="assetModalActions" class="edit-modal-actions" hidden>
+          <button id="assetCancelButton" class="secondary-button" type="button">Abbrechen</button>
+          <button id="assetDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
+        </div>
+      </form>
+
+      <form id="categoryForm" class="panel entry-form" hidden>
+        <div class="panel-title">
+          <h2 id="categoryFormTitle">Budget/Kategorie</h2>
+        </div>
+        <input id="categoryIdInput" type="hidden" />
+        <div class="form-grid">
+          <label>
+            <span>Name</span>
+            <input id="categoryNameInput" maxlength="36" type="text" autocomplete="off" required />
+          </label>
+          <label>
+            <span>Monatsbudget</span>
+            <span class="money-input">
+              <input id="categoryBudgetInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>€</span>
+            </span>
+          </label>
+        </div>
+        <button class="submit-button" type="submit">Speichern</button>
+        <div id="categoryModalActions" class="edit-modal-actions" hidden>
+          <button id="categoryCancelButton" class="secondary-button" type="button">Abbrechen</button>
+          <button id="categoryDeleteButton" class="secondary-button danger-button" type="button">Löschen</button>
+        </div>
+      </form>
+    </div>
 
     <div id="promptDialog" class="confirm-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="promptDialogTitle">
       <div class="confirm-dialog-backdrop"></div>
@@ -436,6 +531,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=77" defer></script>
+    <script src="app.js?v=78" defer></script>
   </body>
 </html>

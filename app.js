@@ -46,6 +46,19 @@ const elements = {
   assetModalActions: document.querySelector("#assetModalActions"),
   assetCancelButton: document.querySelector("#assetCancelButton"),
   assetDeleteButton: document.querySelector("#assetDeleteButton"),
+  categoryForm: document.querySelector("#categoryForm"),
+  categoryFormTitle: document.querySelector("#categoryFormTitle"),
+  categoryIdInput: document.querySelector("#categoryIdInput"),
+  categoryNameInput: document.querySelector("#categoryNameInput"),
+  categoryBudgetInput: document.querySelector("#categoryBudgetInput"),
+  categoryModalActions: document.querySelector("#categoryModalActions"),
+  categoryCancelButton: document.querySelector("#categoryCancelButton"),
+  categoryDeleteButton: document.querySelector("#categoryDeleteButton"),
+  appViews: document.querySelectorAll("[data-view]"),
+  navButtons: document.querySelectorAll("[data-view-target]"),
+  viewTitle: document.querySelector("#viewTitle"),
+  fabButton: document.querySelector("#fabButton"),
+  fabMenu: document.querySelector("#fabMenu"),
   formTitle: document.querySelector("#formTitle"),
   entryId: document.querySelector("#entryId"),
   typeInput: document.querySelector("#typeInput"),
@@ -54,7 +67,6 @@ const elements = {
   personNameInput: document.querySelector("#personNameInput"),
   addPersonButton: document.querySelector("#addPersonButton"),
   personSummaryList: document.querySelector("#personSummaryList"),
-  toggleFormButton: document.querySelector("#toggleFormButton"),
   dateInput: document.querySelector("#dateInput"),
   categoryInput: document.querySelector("#categoryInput"),
   customCategoryInput: document.querySelector("#customCategoryInput"),
@@ -92,12 +104,15 @@ const elements = {
   debtTitle: document.querySelector("#debtTitle"),
   assetTitle: document.querySelector("#assetTitle"),
   entryTitle: document.querySelector("#entryTitle"),
+  budgetList: document.querySelector("#budgetList"),
+  budgetOverviewMini: document.querySelector("#budgetOverviewMini"),
   categoryList: document.querySelector("#categoryList"),
   categoryTemplate: document.querySelector("#categoryTemplate"),
   addCategoryButton: document.querySelector("#addCategoryButton"),
   entryMenuButton: document.querySelector("#entryMenuButton"),
   entryMenuPanel: document.querySelector("#entryMenuPanel"),
   filterInput: document.querySelector("#filterInput"),
+  transactionSearchInput: document.querySelector("#transactionSearchInput"),
   entryList: document.querySelector("#entryList"),
   exportButton: document.querySelector("#exportButton"),
   importInput: document.querySelector("#importInput"),
@@ -105,6 +120,13 @@ const elements = {
   remainingValue: document.querySelector("#remainingValue"),
   totalDebtValue: document.querySelector("#totalDebtValue"),
   totalAssetValue: document.querySelector("#totalAssetValue"),
+  overviewIncomeValue: document.querySelector("#overviewIncomeValue"),
+  overviewExpenseValue: document.querySelector("#overviewExpenseValue"),
+  overviewMonthLabel: document.querySelector("#overviewMonthLabel"),
+  overviewRecurringValue: document.querySelector("#overviewRecurringValue"),
+  overviewRecurringHint: document.querySelector("#overviewRecurringHint"),
+  accountsNetWorthValue: document.querySelector("#accountsNetWorthValue"),
+  accountsDebtValue: document.querySelector("#accountsDebtValue"),
   netWorthValue: document.querySelector("#netWorthValue"),
   currentMonthValue: document.querySelector("#currentMonthValue"),
   previousMonthValue: document.querySelector("#previousMonthValue"),
@@ -115,6 +137,21 @@ const elements = {
   restBudgetHint: document.querySelector("#restBudgetHint"),
   carryoverCount: document.querySelector("#carryoverCount"),
   carryoverHint: document.querySelector("#carryoverHint"),
+  reportsRatioValue: document.querySelector("#reportsRatioValue"),
+  reportsRatioHint: document.querySelector("#reportsRatioHint"),
+  reportsNetWorthValue: document.querySelector("#reportsNetWorthValue"),
+  reportsNetWorthHint: document.querySelector("#reportsNetWorthHint"),
+  reportsMonthMini: document.querySelector("#reportsMonthMini"),
+  reportsTrendList: document.querySelector("#reportsTrendList"),
+  calendarTitle: document.querySelector("#calendarTitle"),
+  calendarSubtitle: document.querySelector("#calendarSubtitle"),
+  calendarPrevButton: document.querySelector("#calendarPrevButton"),
+  calendarNextButton: document.querySelector("#calendarNextButton"),
+  calendarTodayButton: document.querySelector("#calendarTodayButton"),
+  calendarGrid: document.querySelector("#calendarGrid"),
+  calendarDayTitle: document.querySelector("#calendarDayTitle"),
+  calendarDayTotal: document.querySelector("#calendarDayTotal"),
+  calendarDayList: document.querySelector("#calendarDayList"),
   summaryCards: document.querySelectorAll("[data-summary]"),
   summaryBreakdown: document.querySelector("#summaryBreakdown"),
   summaryBreakdownTitle: document.querySelector("#summaryBreakdownTitle"),
@@ -159,6 +196,8 @@ let formTypeChoiceVisible = true;
 let activeSummaryType = "";
 let activeFormKey = "";
 let activeEditContext = null;
+let activeView = "overview";
+let selectedCalendarDay = localDateString(new Date());
 
 elements.monthInput.value = currentLocalMonth();
 elements.typeInput.value = "expense";
@@ -169,26 +208,41 @@ elements.entryForm.addEventListener("change", (event) => clearFieldError(event.t
 elements.assetForm.addEventListener("submit", saveAsset);
 elements.assetForm.addEventListener("input", (event) => clearFieldError(event.target));
 elements.assetForm.addEventListener("change", (event) => clearFieldError(event.target));
+elements.categoryForm.addEventListener("submit", saveCategoryFromForm);
+elements.categoryForm.addEventListener("input", (event) => clearFieldError(event.target));
+elements.categoryForm.addEventListener("change", (event) => clearFieldError(event.target));
 elements.resetFormButton.addEventListener("click", () => resetForm());
-elements.toggleFormButton.addEventListener("click", toggleForm);
+elements.navButtons.forEach((button) => {
+  button.addEventListener("click", () => setActiveView(button.dataset.viewTarget));
+});
+elements.fabButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  toggleFabMenu();
+});
+elements.fabMenu.addEventListener("click", (event) => event.stopPropagation());
 elements.addDebtButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  closeFabMenu();
   openTypedForm("debt");
 });
 elements.addIncomeButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  closeFabMenu();
   openTypedForm("income");
 });
 elements.addExpenseButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  closeFabMenu();
   openTypedForm("expense");
 });
 elements.addAssetButton.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  closeFabMenu();
   openAssetForm();
 });
 elements.addPersonButton.addEventListener("click", addPerson);
@@ -203,11 +257,17 @@ elements.recurringInput.addEventListener("change", syncRecurringFields);
 elements.categoryInput.addEventListener("change", () => {
   if (elements.categoryInput.value) elements.customCategoryInput.value = "";
 });
-elements.addCategoryButton.addEventListener("click", addCategory);
+elements.addCategoryButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  closeFabMenu();
+  openCategoryForm();
+});
 elements.filterInput.addEventListener("change", () => {
   render();
   closeEntryMenu();
 });
+elements.transactionSearchInput.addEventListener("input", renderEntries);
 elements.monthInput.addEventListener("change", render);
 elements.summaryCards.forEach((card) => {
   card.addEventListener("click", () => toggleSummaryBreakdown(card.dataset.summary));
@@ -231,12 +291,12 @@ elements.clearButton.addEventListener("click", (event) => {
   event.stopPropagation();
   clearAllData();
 });
-elements.clearDebtsButton.addEventListener("click", (event) => {
+elements.clearDebtsButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
   clearDebtsForContext();
 });
-elements.clearAssetsButton.addEventListener("click", (event) => {
+elements.clearAssetsButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
   clearAssetsForContext();
@@ -252,12 +312,16 @@ document.querySelectorAll(".collapsible-panel .list-actions").forEach((node) => 
 });
 elements.filterInput.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", (event) => {
+  if (!elements.fabMenu.hidden && !elements.fabMenu.contains(event.target) && !elements.fabButton.contains(event.target)) {
+    closeFabMenu();
+  }
   if (elements.entryMenuPanel.hidden) return;
   if (elements.entryMenuPanel.contains(event.target) || elements.entryMenuButton.contains(event.target)) return;
   closeEntryMenu();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    closeFabMenu();
     closeEntryMenu();
     if (!elements.editModal.hidden) closeEditModal();
   }
@@ -270,14 +334,33 @@ elements.editCancelButton.addEventListener("click", closeEditModal);
 elements.editDeleteButton.addEventListener("click", deleteActiveEditItem);
 elements.assetCancelButton.addEventListener("click", closeEditModal);
 elements.assetDeleteButton.addEventListener("click", deleteActiveEditItem);
+elements.categoryCancelButton.addEventListener("click", closeEditModal);
+elements.categoryDeleteButton.addEventListener("click", deleteActiveEditItem);
 [elements.amountInput, elements.debtTotalInput, elements.paidSoFarInput, elements.debtPaymentInput, elements.principalInput, elements.interestInput, elements.finalPaymentInput].forEach((input) => {
   input.addEventListener("blur", () => formatMoneyField(input));
   input.addEventListener("focus", () => input.select());
 });
 elements.assetAmountInput.addEventListener("blur", () => formatMoneyField(elements.assetAmountInput));
 elements.assetAmountInput.addEventListener("focus", () => elements.assetAmountInput.select());
+elements.categoryBudgetInput.addEventListener("blur", () => formatMoneyField(elements.categoryBudgetInput));
+elements.categoryBudgetInput.addEventListener("focus", () => elements.categoryBudgetInput.select());
 elements.nominalRateInput.addEventListener("blur", () => {
   elements.nominalRateInput.value = formatPercentInput(elements.nominalRateInput.value);
+});
+elements.calendarPrevButton.addEventListener("click", () => {
+  elements.monthInput.value = shiftMonth(elements.monthInput.value, -1);
+  selectedCalendarDay = monthToDate(elements.monthInput.value);
+  render();
+});
+elements.calendarNextButton.addEventListener("click", () => {
+  elements.monthInput.value = shiftMonth(elements.monthInput.value, 1);
+  selectedCalendarDay = monthToDate(elements.monthInput.value);
+  render();
+});
+elements.calendarTodayButton.addEventListener("click", () => {
+  elements.monthInput.value = currentLocalMonth();
+  selectedCalendarDay = localDateString(new Date());
+  render();
 });
 
 if ("serviceWorker" in navigator) {
@@ -302,6 +385,7 @@ if ("serviceWorker" in navigator) {
 }
 
 render();
+setActiveView(activeView);
 syncFormMode();
 
 function loadState() {
@@ -444,6 +528,45 @@ function assetSignature(asset) {
   return `${name}|${amount}|${note}`;
 }
 
+function normalizeView(view) {
+  const valid = ["overview", "accounts", "budgets", "transactions", "calendar", "reports"];
+  return valid.includes(view) ? view : "overview";
+}
+
+function setActiveView(view) {
+  activeView = normalizeView(view);
+  const titles = {
+    overview: "Übersicht",
+    accounts: "Konten",
+    budgets: "Budgets",
+    transactions: "Buchungen",
+    calendar: "Kalender",
+    reports: "Reports",
+  };
+  elements.appViews.forEach((section) => {
+    section.hidden = section.dataset.view !== activeView;
+  });
+  elements.navButtons.forEach((button) => {
+    const selected = button.dataset.viewTarget === activeView;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-current", selected ? "page" : "false");
+  });
+  elements.viewTitle.textContent = titles[activeView] || "BudgetUp";
+  closeFabMenu();
+}
+
+function toggleFabMenu() {
+  elements.fabMenu.hidden = !elements.fabMenu.hidden;
+  elements.fabButton.classList.toggle("open", !elements.fabMenu.hidden);
+  elements.fabButton.setAttribute("aria-expanded", String(!elements.fabMenu.hidden));
+}
+
+function closeFabMenu() {
+  elements.fabMenu.hidden = true;
+  elements.fabButton.classList.remove("open");
+  elements.fabButton.setAttribute("aria-expanded", "false");
+}
+
 function closeForm() {
   elements.entryForm.hidden = true;
   elements.entryForm.classList.remove("modal-form");
@@ -453,19 +576,13 @@ function closeForm() {
   elements.assetForm.classList.remove("modal-form");
   elements.assetModalActions.hidden = true;
   elements.assetDeleteButton.hidden = false;
-  elements.toggleFormButton.textContent = "+ Neuer Eintrag";
+  elements.categoryForm.hidden = true;
+  elements.categoryForm.classList.remove("modal-form");
+  elements.categoryModalActions.hidden = true;
+  elements.categoryDeleteButton.hidden = false;
   activeFormKey = "";
   activeEditContext = null;
   clearFieldErrors();
-}
-
-function toggleForm() {
-  if (isModalOpenFor("main")) {
-    closeEditModal();
-    return;
-  }
-  resetForm({ showTypeChoice: true, type: "expense" });
-  openEntryModal({ key: "main", mode: "create", type: "expense", showTypeChoice: true });
 }
 
 function openTypedForm(type) {
@@ -499,11 +616,11 @@ function openEntryModal({ key, mode, type, id = "", showTypeChoice = false }) {
   activeFormKey = key;
   elements.editModalSlot.append(elements.entryForm);
   elements.assetForm.hidden = true;
+  elements.categoryForm.hidden = true;
   elements.entryForm.hidden = false;
   elements.entryForm.classList.add("modal-form");
   elements.editModalActions.hidden = false;
   elements.editDeleteButton.hidden = mode !== "edit";
-  elements.toggleFormButton.textContent = key === "main" ? "× Formular schließen" : "+ Neuer Eintrag";
   elements.editModal.hidden = false;
   document.body.classList.add("modal-open");
   setTypeChoiceVisible(showTypeChoice);
@@ -717,9 +834,7 @@ function saveDebtFromMainForm() {
 }
 
 function addCategory() {
-  state.categories.push({ id: createId(), name: "Neue Kategorie", budget: 0 });
-  persist();
-  render();
+  openCategoryForm();
 }
 
 function updateCategory(id, patch) {
@@ -735,6 +850,7 @@ function removeCategory(id) {
   state.categories = state.categories.filter((item) => item.id !== id);
   persist();
   render();
+  if (activeEditContext?.kind === "category" && activeEditContext.id === id) closeEditModal();
 }
 
 function render() {
@@ -747,6 +863,9 @@ function render() {
   renderAssets();
   renderEntries();
   renderSummary();
+  renderBudgets();
+  renderCalendar();
+  renderReports();
 }
 
 function fillPersonSelect() {
@@ -993,6 +1112,7 @@ function fillCategorySelect() {
 }
 
 function renderCategories() {
+  if (!elements.categoryList) return;
   elements.categoryList.innerHTML = "";
   state.categories.forEach((category) => {
     const item = elements.categoryTemplate.content.firstElementChild.cloneNode(true);
@@ -1009,13 +1129,133 @@ function renderCategories() {
   });
 }
 
+function renderBudgets() {
+  const month = elements.monthInput.value;
+  const expenses = state.entries
+    .filter(includeInSelectedTotal)
+    .filter((entry) => entry.type === "expense" && isEntryActiveInMonth(entry, month));
+  const spentByCategory = new Map();
+  expenses.forEach((entry) => {
+    const name = entry.category || "Sonstiges";
+    spentByCategory.set(name, (spentByCategory.get(name) || 0) + Number(entry.amount || 0));
+  });
+  const rows = uniqueCategoryNames(state.categories.map((category) => category.name))
+    .map((name) => state.categories.find((category) => sameCategory(category.name, name)))
+    .filter(Boolean);
+
+  const totalBudget = rows.reduce((total, category) => total + Number(category.budget || 0), 0);
+  const totalSpent = [...spentByCategory.values()].reduce((total, value) => total + value, 0);
+  elements.budgetOverviewMini.textContent = `${formatMoney.format(totalBudget - totalSpent)} übrig`;
+
+  if (!rows.length) {
+    elements.budgetList.innerHTML = `<p class="empty-state">Noch keine Budgets. Nutze den Plus-Button, um eine Kategorie anzulegen.</p>`;
+    return;
+  }
+
+  elements.budgetList.innerHTML = rows.map((category) => {
+    const spent = spentByCategory.get(category.name) || 0;
+    const budget = Number(category.budget || 0);
+    const remaining = budget - spent;
+    const percent = budget > 0 ? Math.min(100, Math.max(0, (spent / budget) * 100)) : 0;
+    return `
+      <article class="budget-row">
+        <div class="budget-copy">
+          <strong>${escapeHtml(category.name)}</strong>
+          <span>${formatMoney.format(spent)} ausgegeben · ${formatMoney.format(remaining)} übrig</span>
+          <div class="budget-progress" aria-hidden="true"><span style="width:${percent}%"></span></div>
+        </div>
+        <div class="budget-side">
+          <b>${formatMoney.format(budget)}</b>
+          <button class="icon-button" type="button" title="Budget bearbeiten" aria-label="Budget bearbeiten" data-category-edit="${escapeHtml(category.id)}">✎</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  elements.budgetList.querySelectorAll("[data-category-edit]").forEach((button) => {
+    button.addEventListener("click", () => openCategoryForm(button.dataset.categoryEdit));
+  });
+}
+
+function openCategoryForm(id = "") {
+  const mode = id ? "edit" : "create";
+  const key = id ? `edit-category:${id}` : "typed:category";
+  if (isModalOpenFor(key)) {
+    closeEditModal();
+    return;
+  }
+  resetCategoryForm();
+  activeEditContext = { kind: "category", mode, id };
+  activeFormKey = key;
+  elements.editModalSlot.append(elements.categoryForm);
+  elements.entryForm.hidden = true;
+  elements.assetForm.hidden = true;
+  elements.categoryForm.hidden = false;
+  elements.categoryForm.classList.add("modal-form");
+  elements.categoryModalActions.hidden = false;
+  elements.categoryDeleteButton.hidden = mode !== "edit";
+  elements.categoryFormTitle.textContent = mode === "edit" ? "Budget bearbeiten" : "Budget/Kategorie";
+  if (id) {
+    const category = state.categories.find((item) => item.id === id);
+    if (!category) return;
+    elements.categoryIdInput.value = category.id;
+    elements.categoryNameInput.value = category.name;
+    elements.categoryBudgetInput.value = formatMoneyInput(category.budget || 0);
+  }
+  elements.editModal.hidden = false;
+  document.body.classList.add("modal-open");
+  focusModalForm(elements.categoryForm);
+}
+
+function resetCategoryForm() {
+  elements.categoryForm.reset();
+  elements.categoryIdInput.value = "";
+  elements.categoryModalActions.hidden = true;
+  elements.categoryDeleteButton.hidden = false;
+  clearFieldErrors();
+}
+
+function saveCategoryFromForm(event) {
+  event.preventDefault();
+  clearFieldErrors();
+  const name = elements.categoryNameInput.value.trim();
+  const budget = parseMoneyInput(elements.categoryBudgetInput.value || "0");
+  if (!name) {
+    setFieldError(elements.categoryNameInput, "Bitte Kategorie eingeben.");
+    return;
+  }
+  if (elements.categoryBudgetInput.value.trim() && (!Number.isFinite(budget) || budget < 0)) {
+    setFieldError(elements.categoryBudgetInput, "Budget ist keine gültige Zahl.");
+    return;
+  }
+
+  const id = elements.categoryIdInput.value;
+  const duplicate = state.categories.find((category) => sameCategory(category.name, name) && category.id !== id);
+  if (duplicate) {
+    setFieldError(elements.categoryNameInput, "Diese Kategorie gibt es schon.");
+    return;
+  }
+  if (id) updateCategory(id, { name, budget: Number.isFinite(budget) ? budget : 0 });
+  else state.categories.push({ id: createId(), name, budget: Number.isFinite(budget) ? budget : 0 });
+  persist();
+  render();
+  showMessage("Budget gespeichert.", "success");
+  closeEditModal();
+}
+
 function renderEntries() {
   const month = elements.monthInput.value;
   const filter = elements.filterInput.value;
+  const search = elements.transactionSearchInput.value.trim().toLowerCase();
   const entries = state.entries
     .filter((entry) => isEntryActiveInMonth(entry, month))
     .filter(includeInSelectedTotal)
     .filter((entry) => filter === "all" || entry.type === filter || (filter === "recurring" && entry.recurring))
+    .filter((entry) => {
+      if (!search) return true;
+      return [entry.description, entry.category, entry.payment, personName(entry.personId)]
+        .some((value) => String(value || "").toLowerCase().includes(search));
+    })
     .sort((a, b) => {
       if (a.type !== b.type) return a.type === "income" ? -1 : 1;
       const diff = Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
@@ -1028,34 +1268,41 @@ function renderEntries() {
     return;
   }
 
-  elements.entryList.innerHTML = entries.map((entry) => {
-    const sign = entry.type === "income" ? "+" : "-";
-    const title = entry.description || entry.category;
-    const meta = [personName(entry.personId), entry.category, displayText(entry.payment)].filter(Boolean).join(" · ");
-    const badges = entryBadges(entry, month);
-    return `
-      <article class="entry-row ${entry.type}">
-        <time class="entry-date" datetime="${entryOccurrenceDate(entry, month)}">${formatDate(entryOccurrenceDate(entry, month))}</time>
-        <div class="entry-main">
-          <div class="row-heading">
-            <strong>${escapeHtml(title)}</strong>
-            <span class="entry-controls inline-controls">
-              <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-edit="${entry.id}">✎</button>
-              <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-delete="${entry.id}">×</button>
-            </span>
-          </div>
-          <span>${escapeHtml(meta)}</span>
-          ${badges ? `<div class="status-badges">${badges}</div>` : ""}
-        </div>
-        <div class="entry-amount ${entry.type}">${sign}${formatMoney.format(entry.amount)}</div>
-      </article>
-    `;
-  }).join("");
+  elements.entryList.innerHTML = entries.map((entry) => transactionRowHtml(entry, month)).join("");
+  wireEntryRowActions(elements.entryList);
+}
 
-  elements.entryList.querySelectorAll("[data-edit]").forEach((button) => {
+function transactionRowHtml(entry, monthOrDate) {
+  const month = monthOrDate.length === 10 ? monthOrDate.slice(0, 7) : monthOrDate;
+  const sign = entry.type === "income" ? "+" : "-";
+  const title = entry.description || entry.category;
+  const meta = [personName(entry.personId), entry.category, displayText(entry.payment)].filter(Boolean).join(" · ");
+  const badges = entryBadges(entry, month);
+  const occurrence = monthOrDate.length === 10 ? monthOrDate : entryOccurrenceDate(entry, month);
+  return `
+    <article class="entry-row ${entry.type}">
+      <time class="entry-date" datetime="${occurrence}">${formatDate(occurrence)}</time>
+      <div class="entry-main">
+        <div class="row-heading">
+          <strong>${escapeHtml(title)}</strong>
+          <span class="entry-controls inline-controls">
+            <button class="icon-button" type="button" title="Bearbeiten" aria-label="Bearbeiten" data-edit="${entry.id}">✎</button>
+            <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-delete="${entry.id}">×</button>
+          </span>
+        </div>
+        <span>${escapeHtml(meta)}</span>
+        ${badges ? `<div class="status-badges">${badges}</div>` : ""}
+      </div>
+      <div class="entry-amount ${entry.type}">${sign}${formatMoney.format(entry.amount)}</div>
+    </article>
+  `;
+}
+
+function wireEntryRowActions(root) {
+  root.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => editEntry(button.dataset.edit));
   });
-  elements.entryList.querySelectorAll("[data-delete]").forEach((button) => {
+  root.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", () => deleteEntry(button.dataset.delete));
   });
 }
@@ -1181,6 +1428,7 @@ function openAssetForm(id = "") {
   activeFormKey = key;
   elements.editModalSlot.append(elements.assetForm);
   elements.entryForm.hidden = true;
+  elements.categoryForm.hidden = true;
   elements.assetForm.hidden = false;
   elements.assetForm.classList.add("modal-form");
   elements.assetModalActions.hidden = false;
@@ -1200,7 +1448,6 @@ function openAssetForm(id = "") {
     elements.assetPersonInput.value = targetPersonIdForNewItem();
   }
 
-  elements.toggleFormButton.textContent = "+ Neuer Eintrag";
   elements.editModal.hidden = false;
   document.body.classList.add("modal-open");
   focusModalForm(elements.assetForm);
@@ -1282,12 +1529,17 @@ function renderSummary() {
   const totalAssets = summary.totalAssets;
   const netWorth = summary.netWorth;
 
+  elements.overviewMonthLabel.textContent = formatMonthName(month);
+  elements.overviewIncomeValue.textContent = formatMoney.format(summary.income);
+  elements.overviewExpenseValue.textContent = formatMoney.format(summary.expense);
   elements.remainingValue.textContent = formatMoney.format(remaining);
   elements.remainingValue.parentElement.classList.toggle("positive", remaining >= 0);
   elements.remainingValue.parentElement.classList.toggle("negative", remaining < 0);
   elements.totalDebtValue.textContent = formatMoney.format(totalDebt);
   elements.totalAssetValue.textContent = formatMoney.format(totalAssets);
   elements.netWorthValue.textContent = formatMoney.format(netWorth);
+  elements.accountsNetWorthValue.textContent = formatMoney.format(netWorth);
+  elements.accountsDebtValue.textContent = formatMoney.format(totalDebt);
   elements.netWorthValue.parentElement.classList.toggle("positive", netWorth >= 0);
   elements.netWorthValue.parentElement.classList.toggle("negative", netWorth < 0);
   renderMonthComparison(month);
@@ -1318,6 +1570,13 @@ function renderInsights(month, summary) {
     .filter((entry) => entry.recurring)
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
     .slice(0, 3);
+  const recurringTotal = monthEntries
+    .filter((entry) => entry.recurring && entry.type === "expense")
+    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
+  elements.overviewRecurringValue.textContent = formatMoney.format(recurringTotal);
+  elements.overviewRecurringHint.textContent = recurringRows.length
+    ? recurringRows.slice(0, 2).map((entry) => entry.description || entry.category).join(", ")
+    : "keine aktiven Abos";
   elements.recurringInsightList.innerHTML = recurringRows.length
     ? recurringRows.map((entry) => insightLine(entry.description || entry.category, formatMoney.format(entry.amount), entry.endDate ? `endet ${formatMonthName(entry.endDate.slice(0, 7))}` : "läuft weiter")).join("")
     : `<p class="empty-state compact-empty">Keine Abos im aktuellen Monat</p>`;
@@ -1344,6 +1603,104 @@ function insightLine(label, value, hint = "") {
       ${hint ? `<small>${escapeHtml(hint)}</small>` : ""}
     </div>
   `;
+}
+
+function renderCalendar() {
+  const month = elements.monthInput.value;
+  const selectedMonth = selectedCalendarDay.slice(0, 7) === month ? selectedCalendarDay : monthToDate(month);
+  if (selectedCalendarDay.slice(0, 7) !== month) selectedCalendarDay = selectedMonth;
+  elements.calendarTitle.textContent = formatMonthName(month);
+  elements.calendarSubtitle.textContent = "Einnahmen und Ausgaben pro Tag";
+
+  const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const [year, monthIndex] = month.split("-").map(Number);
+  const days = daysInMonth(month);
+  const firstDate = new Date(year, monthIndex - 1, 1);
+  const leading = (firstDate.getDay() + 6) % 7;
+  const cells = [];
+  weekdays.forEach((day) => cells.push(`<div class="calendar-weekday">${day}</div>`));
+  for (let index = 0; index < leading; index += 1) {
+    cells.push(`<div class="calendar-day empty"></div>`);
+  }
+  for (let day = 1; day <= days; day += 1) {
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const totals = dailyTotals(date);
+    const net = totals.income - totals.expense;
+    const isSelected = date === selectedCalendarDay;
+    const isToday = date === localDateString(new Date());
+    cells.push(`
+      <button class="calendar-day ${isSelected ? "selected" : ""} ${isToday ? "today" : ""}" type="button" data-calendar-day="${date}">
+        <span>${day}</span>
+        ${totals.income || totals.expense ? `<small class="${net >= 0 ? "positive-text" : "negative-text"}">${formatCompactMoney(net)}</small>` : ""}
+      </button>
+    `);
+  }
+  elements.calendarGrid.innerHTML = cells.join("");
+  elements.calendarGrid.querySelectorAll("[data-calendar-day]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedCalendarDay = button.dataset.calendarDay;
+      renderCalendar();
+    });
+  });
+  renderCalendarDayList();
+}
+
+function renderCalendarDayList() {
+  const entries = entriesForDate(selectedCalendarDay)
+    .filter(includeInSelectedTotal)
+    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  const total = entries.reduce((sumValue, entry) => sumValue + (entry.type === "income" ? Number(entry.amount || 0) : -Number(entry.amount || 0)), 0);
+  elements.calendarDayTitle.textContent = formatDateFull(selectedCalendarDay);
+  elements.calendarDayTotal.textContent = `${total >= 0 ? "+" : ""}${formatMoney.format(total)}`;
+  elements.calendarDayTotal.classList.toggle("income-pill", total >= 0);
+  elements.calendarDayTotal.classList.toggle("expense-pill", total < 0);
+  if (!entries.length) {
+    elements.calendarDayList.innerHTML = `<p class="empty-state">Keine Buchungen an diesem Tag.</p>`;
+    return;
+  }
+  elements.calendarDayList.innerHTML = entries.map((entry) => transactionRowHtml(entry, selectedCalendarDay)).join("");
+  wireEntryRowActions(elements.calendarDayList);
+}
+
+function dailyTotals(date) {
+  const entries = entriesForDate(date).filter(includeInSelectedTotal);
+  return {
+    income: sum(entries.filter((entry) => entry.type === "income")),
+    expense: sum(entries.filter((entry) => entry.type === "expense")),
+  };
+}
+
+function entriesForDate(date) {
+  const month = date.slice(0, 7);
+  return state.entries.filter((entry) => {
+    if (!isEntryActiveInMonth(entry, month)) return false;
+    return entryOccurrenceDate(entry, month) === date;
+  });
+}
+
+function renderReports() {
+  const month = elements.monthInput.value;
+  const summary = summaryTotals(month);
+  const ratio = summary.income > 0 ? Math.round((summary.expense / summary.income) * 100) : 0;
+  elements.reportsRatioValue.textContent = `${ratio} %`;
+  elements.reportsRatioHint.textContent = `${formatMoney.format(summary.expense)} von ${formatMoney.format(summary.income)} ausgegeben`;
+  elements.reportsNetWorthValue.textContent = formatMoney.format(summary.netWorth);
+  elements.reportsNetWorthHint.textContent = `${formatMoney.format(summary.totalAssets)} Vermögen · ${formatMoney.format(summary.totalDebt)} Schulden`;
+  elements.reportsMonthMini.textContent = formatMoney.format(summary.balance);
+
+  const months = Array.from({ length: 6 }, (_, index) => shiftMonth(month, index - 5));
+  elements.reportsTrendList.innerHTML = months.map((itemMonth) => {
+    const item = summaryTotals(itemMonth);
+    return `
+      <article class="summary-breakdown-row">
+        <span>
+          <strong>${formatMonthName(itemMonth)}</strong>
+          <small>${formatMoney.format(item.income)} Einnahmen · ${formatMoney.format(item.expense)} Ausgaben</small>
+        </span>
+        <strong class="${item.balance >= 0 ? "positive-text" : "negative-text"}">${formatMoney.format(item.balance)}</strong>
+      </article>
+    `;
+  }).join("");
 }
 
 function summaryTotals(month) {
@@ -1599,6 +1956,9 @@ function deleteActiveEditItem() {
     showMessage("Schuld gelöscht.");
   } else if (kind === "asset") {
     deleteAsset(id);
+  } else if (kind === "category") {
+    removeCategory(id);
+    showMessage("Budget gelöscht.");
   }
 }
 
@@ -2594,6 +2954,18 @@ function addMonths(month, amount) {
 function currentLocalMonth() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function localDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatCompactMoney(value) {
+  const number = Number(value || 0);
+  const sign = number > 0 ? "+" : "";
+  return `${sign}${new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 0,
+  }).format(number)} €`;
 }
 
 function defaultBudgetForCategory(name) {
