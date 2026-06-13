@@ -2,18 +2,33 @@ const STORAGE_KEY = "budget-app-v2";
 const STANDARD_CATEGORY_NAMES = [
   "Wohnen",
   "Lebensmittel",
-  "Transport",
-  "Auto",
-  "Versicherung",
+  "Mobilität",
+  "Abos",
+  "Versicherungen",
   "Gesundheit",
+  "Bildung",
   "Freizeit",
   "Reisen",
-  "Abos",
+  "Familie",
   "Schulden",
   "Einkommen",
+  "Investments",
   "Sonstiges",
 ];
 const ENTRY_STATUSES = ["open", "paid", "ended"];
+const BANK_PROVIDERS = [
+  { id: "gocardless", name: "GoCardless", status: "geplant" },
+  { id: "tink", name: "Tink", status: "geplant" },
+  { id: "finapi", name: "finAPI", status: "geplant" },
+];
+const ASSET_TYPES = {
+  cash: "Bargeld",
+  bank: "Bankkonto",
+  savings: "Sparkonto",
+  investment: "Investment",
+  property: "Sachwert",
+  other: "Sonstiges",
+};
 
 const defaults = {
   categories: STANDARD_CATEGORY_NAMES.map((name) => ({ id: createId(), name, budget: defaultBudgetForCategory(name) })),
@@ -21,6 +36,7 @@ const defaults = {
   ],
   debts: [],
   assets: [],
+  bankConnections: [],
   people: [
     { id: createId(), name: "Gemeinsam" },
   ],
@@ -35,11 +51,18 @@ repairCopiedAssets();
 
 const elements = {
   monthInput: document.querySelector("#monthInput"),
+  contextSelect: document.querySelector("#contextSelect"),
+  settingsButton: document.querySelector("#settingsButton"),
+  settingsModal: document.querySelector("#settingsModal"),
+  settingsModalBackdrop: document.querySelector("#settingsModalBackdrop"),
+  settingsCloseButton: document.querySelector("#settingsCloseButton"),
+  formTemplates: document.querySelector(".form-templates"),
   entryForm: document.querySelector("#entryForm"),
   assetForm: document.querySelector("#assetForm"),
   assetFormTitle: document.querySelector("#assetFormTitle"),
   assetId: document.querySelector("#assetId"),
   assetPersonInput: document.querySelector("#assetPersonInput"),
+  assetTypeInput: document.querySelector("#assetTypeInput"),
   assetNameInput: document.querySelector("#assetNameInput"),
   assetAmountInput: document.querySelector("#assetAmountInput"),
   assetNoteInput: document.querySelector("#assetNoteInput"),
@@ -56,6 +79,15 @@ const elements = {
   categoryDeleteButton: document.querySelector("#categoryDeleteButton"),
   appViews: document.querySelectorAll("[data-view]"),
   navButtons: document.querySelectorAll("[data-view-target]"),
+  accountStructureList: document.querySelector("#accountStructureList"),
+  bankStatusText: document.querySelector("#bankStatusText"),
+  bankProviderList: document.querySelector("#bankProviderList"),
+  bankConnectButton: document.querySelector("#bankConnectButton"),
+  moreBankConnectButton: document.querySelector("#moreBankConnectButton"),
+  moreSettingsButton: document.querySelector("#moreSettingsButton"),
+  bankInfoModal: document.querySelector("#bankInfoModal"),
+  bankInfoBackdrop: document.querySelector("#bankInfoBackdrop"),
+  bankInfoCloseButton: document.querySelector("#bankInfoCloseButton"),
   viewTitle: document.querySelector("#viewTitle"),
   fabButton: document.querySelector("#fabButton"),
   fabMenu: document.querySelector("#fabMenu"),
@@ -109,6 +141,9 @@ const elements = {
   categoryList: document.querySelector("#categoryList"),
   categoryTemplate: document.querySelector("#categoryTemplate"),
   addCategoryButton: document.querySelector("#addCategoryButton"),
+  quickAddInput: document.querySelector("#quickAddInput"),
+  quickAddButton: document.querySelector("#quickAddButton"),
+  quickAddTypeInputs: document.querySelectorAll("input[name='quickAddType']"),
   entryMenuButton: document.querySelector("#entryMenuButton"),
   entryMenuPanel: document.querySelector("#entryMenuPanel"),
   filterInput: document.querySelector("#filterInput"),
@@ -137,10 +172,23 @@ const elements = {
   restBudgetHint: document.querySelector("#restBudgetHint"),
   carryoverCount: document.querySelector("#carryoverCount"),
   carryoverHint: document.querySelector("#carryoverHint"),
+  biggestExpenseValue: document.querySelector("#biggestExpenseValue"),
+  biggestExpenseHint: document.querySelector("#biggestExpenseHint"),
+  topSpendValue: document.querySelector("#topSpendValue"),
+  topSpendHint: document.querySelector("#topSpendHint"),
+  nextPaymentValue: document.querySelector("#nextPaymentValue"),
+  nextPaymentHint: document.querySelector("#nextPaymentHint"),
+  weekSpendValue: document.querySelector("#weekSpendValue"),
+  weekSpendHint: document.querySelector("#weekSpendHint"),
   reportsRatioValue: document.querySelector("#reportsRatioValue"),
   reportsRatioHint: document.querySelector("#reportsRatioHint"),
   reportsNetWorthValue: document.querySelector("#reportsNetWorthValue"),
   reportsNetWorthHint: document.querySelector("#reportsNetWorthHint"),
+  reportsOptimizationList: document.querySelector("#reportsOptimizationList"),
+  reportsFrequentList: document.querySelector("#reportsFrequentList"),
+  reportsLargestList: document.querySelector("#reportsLargestList"),
+  reportsDebtValue: document.querySelector("#reportsDebtValue"),
+  reportsDebtHint: document.querySelector("#reportsDebtHint"),
   reportsMonthMini: document.querySelector("#reportsMonthMini"),
   reportsTrendList: document.querySelector("#reportsTrendList"),
   calendarTitle: document.querySelector("#calendarTitle"),
@@ -263,6 +311,34 @@ elements.addCategoryButton.addEventListener("click", (event) => {
   closeFabMenu();
   openCategoryForm();
 });
+elements.contextSelect.addEventListener("change", () => {
+  selectPerson(elements.contextSelect.value || "all");
+});
+elements.settingsButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openSettingsModal();
+});
+elements.settingsModalBackdrop.addEventListener("click", closeSettingsModal);
+elements.settingsCloseButton.addEventListener("click", closeSettingsModal);
+elements.moreSettingsButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openSettingsModal();
+});
+elements.bankConnectButton?.addEventListener("click", openBankInfoModal);
+elements.moreBankConnectButton?.addEventListener("click", openBankInfoModal);
+elements.bankInfoBackdrop?.addEventListener("click", closeBankInfoModal);
+elements.bankInfoCloseButton?.addEventListener("click", closeBankInfoModal);
+document.querySelectorAll("[data-more-action]").forEach((button) => {
+  button.addEventListener("click", () => handleMoreAction(button.dataset.moreAction));
+});
+elements.quickAddButton.addEventListener("click", saveQuickAdd);
+elements.quickAddInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveQuickAdd();
+  }
+});
 elements.filterInput.addEventListener("change", () => {
   render();
   closeEntryMenu();
@@ -324,6 +400,8 @@ document.addEventListener("keydown", (event) => {
     closeFabMenu();
     closeEntryMenu();
     if (!elements.editModal.hidden) closeEditModal();
+    if (!elements.settingsModal.hidden) closeSettingsModal();
+    if (elements.bankInfoModal && !elements.bankInfoModal.hidden) closeBankInfoModal();
   }
 });
 elements.editModalBackdrop.addEventListener("click", closeEditModal);
@@ -366,6 +444,7 @@ elements.calendarTodayButton.addEventListener("click", () => {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("service-worker.js").then((registration) => {
+      if (!registration) return;
       registration.update();
       if (registration.waiting) {
         registration.waiting.postMessage({ type: "SKIP_WAITING" });
@@ -380,7 +459,7 @@ if ("serviceWorker" in navigator) {
           }
         });
       });
-    });
+    }).catch(() => {});
   });
 }
 
@@ -399,6 +478,7 @@ function loadState() {
       entries: Array.isArray(parsed.entries) ? parsed.entries.map(normalizeEntry) : clone(defaults.entries),
       debts: Array.isArray(parsed.debts) ? parsed.debts.map(normalizeDebt) : [],
       assets: Array.isArray(parsed.assets) ? parsed.assets.map(normalizeAsset) : [],
+      bankConnections: Array.isArray(parsed.bankConnections) ? parsed.bankConnections.map(normalizeBankConnection) : [],
       people: Array.isArray(parsed.people) ? parsed.people.map(normalizePerson) : clone(defaults.people),
       selectedPersonId: parsed.selectedPersonId || "all",
     };
@@ -528,20 +608,161 @@ function assetSignature(asset) {
   return `${name}|${amount}|${note}`;
 }
 
+function getActiveContext(id = state.selectedPersonId) {
+  const contextId = id || "all";
+  if (contextId === "all") return { id: "all", label: "Gesamt", isAll: true };
+  const person = state.people.find((item) => item.id === contextId);
+  if (!person) return { id: "all", label: "Gesamt", isAll: true };
+  return { id: person.id, label: person.name, isAll: false };
+}
+
+function contextMatchesItem(item, context = getActiveContext()) {
+  if (context.isAll) return !item.duplicateOf;
+  return (item.personId || defaultPersonId()) === context.id;
+}
+
+function getEntriesForMonth(month, context = getActiveContext()) {
+  return state.entries
+    .filter((entry) => isEntryActiveInMonth(entry, month))
+    .filter((entry) => contextMatchesItem(entry, context));
+}
+
+function getDebtsForMonth(month, context = getActiveContext(), { activeOnly = false, visibleOnly = true } = {}) {
+  return state.debts
+    .filter((debt) => contextMatchesItem(debt, context))
+    .filter((debt) => !visibleOnly || isDebtVisibleInMonth(debt, month))
+    .filter((debt) => !activeOnly || isDebtActiveInMonth(debt, month));
+}
+
+function getAssetsForContext(context = getActiveContext()) {
+  return state.assets.filter((asset) => contextMatchesItem(asset, context));
+}
+
+function getBankConnections() {
+  return Array.isArray(state.bankConnections) ? state.bankConnections : [];
+}
+
+function calculateMoneyStructure(month, context = getActiveContext()) {
+  const assets = getAssetsForContext(context);
+  const debts = getDebtsForMonth(month, context);
+  const buckets = [
+    { key: "bank", label: "Bankkonten", hint: "Giro- und Zahlungskonten", amount: 0, count: 0 },
+    { key: "cash", label: "Bargeld", hint: "Cash und Haushaltskasse", amount: 0, count: 0 },
+    { key: "savings", label: "Sparkonten", hint: "Rücklagen und Sparziele", amount: 0, count: 0 },
+    { key: "investment", label: "Investments", hint: "Depot, ETF, Krypto oder Beteiligungen", amount: 0, count: 0 },
+    { key: "property", label: "Sachwerte", hint: "Wertgegenstände und sonstige Assets", amount: 0, count: 0 },
+    { key: "liability", label: "Schulden", hint: "Kredite, Ratenzahlungen, Kreditkarten", amount: 0, count: 0, negative: true },
+  ];
+  const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+  assets.forEach((asset) => {
+    const key = normalizeAssetType(asset.type || inferAssetType(asset));
+    const bucket = byKey.get(key) || byKey.get("property");
+    bucket.amount += Number(asset.amount || 0);
+    bucket.count += 1;
+  });
+  debts.forEach((debt) => {
+    const bucket = byKey.get("liability");
+    bucket.amount += remainingDebt(debt, month);
+    bucket.count += 1;
+  });
+  return buckets;
+}
+
+function calculateMonthSummary(month, context = getActiveContext()) {
+  const monthEntries = getEntriesForMonth(month, context);
+  const income = sum(monthEntries.filter((entry) => entry.type === "income"));
+  const entryExpense = sum(monthEntries.filter((entry) => entry.type === "expense"));
+  const debtMonthlyCost = getDebtsForMonth(month, context, { activeOnly: true })
+    .reduce((total, debt) => total + Number(debt.monthlyPayment || 0), 0);
+  const totalDebt = getDebtsForMonth(month, context)
+    .reduce((total, debt) => total + remainingDebt(debt, month), 0);
+  const totalAssets = getAssetsForContext(context)
+    .reduce((total, asset) => total + Number(asset.amount || 0), 0);
+  const expense = entryExpense + debtMonthlyCost;
+  const balance = income - expense;
+  const netWorth = totalAssets - totalDebt;
+  return { income, entryExpense, debtMonthlyCost, expense, balance, totalDebt, totalAssets, netWorth };
+}
+
+function calculateInsightSummary(month, context = getActiveContext()) {
+  const entries = getEntriesForMonth(month, context);
+  const expenses = entries.filter((entry) => entry.type === "expense");
+  const recurringExpenses = expenses.filter((entry) => entry.recurring);
+  const byCategory = totalsBy(expenses, (entry) => entry.category || "Sonstiges");
+  const byDescription = totalsBy(expenses, (entry) => entry.description || entry.category || "Ausgabe");
+  const topCategory = topMapEntry(byCategory);
+  const topDescription = topMapEntry(byDescription);
+  const largestPayments = expenses
+    .slice()
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
+    .slice(0, 3);
+  const recurringTotal = recurringExpenses.reduce((total, entry) => total + Number(entry.amount || 0), 0);
+  const summary = calculateMonthSummary(month, context);
+  return {
+    entries,
+    expenses,
+    byCategory,
+    byDescription,
+    topCategory,
+    topDescription,
+    largestPayments,
+    recurringCount: recurringExpenses.length,
+    recurringTotal,
+    recurringShare: summary.expense > 0 ? Math.round((recurringTotal / summary.expense) * 100) : 0,
+    summary,
+  };
+}
+
+function calculateBudgetUsage(month, context = getActiveContext()) {
+  const expenses = getEntriesForMonth(month, context).filter((entry) => entry.type === "expense");
+  const spentByCategory = new Map();
+  expenses.forEach((entry) => {
+    const name = entry.category || "Sonstiges";
+    spentByCategory.set(name, (spentByCategory.get(name) || 0) + Number(entry.amount || 0));
+  });
+  const categories = uniqueCategoryNames(state.categories.map((category) => category.name))
+    .map((name) => state.categories.find((category) => sameCategory(category.name, name)))
+    .filter(Boolean);
+  const totalBudget = categories.reduce((total, category) => total + Number(category.budget || 0), 0);
+  const totalSpent = [...spentByCategory.values()].reduce((total, value) => total + value, 0);
+  return { categories, spentByCategory, totalBudget, totalSpent, remaining: totalBudget - totalSpent };
+}
+
+function getCalendarDaySummary(date, context = getActiveContext()) {
+  const items = calendarItemsForDate(date, context);
+  const entries = items.filter((item) => item.kind !== "debt");
+  const debtExpense = items
+    .filter((item) => item.kind === "debt")
+    .reduce((total, item) => total + Number(item.amount || 0), 0);
+  const income = sum(entries.filter((entry) => entry.type === "income"));
+  const entryExpense = sum(entries.filter((entry) => entry.type === "expense"));
+  const expense = entryExpense + debtExpense;
+  return {
+    items,
+    income,
+    entryExpense,
+    debtExpense,
+    expense,
+    net: income - expense,
+    recurring: entries.some((entry) => entry.recurring),
+  };
+}
+
 function normalizeView(view) {
-  const valid = ["overview", "accounts", "budgets", "transactions", "calendar", "reports"];
+  const valid = ["overview", "accounts", "budgets", "transactions", "reports", "more"];
   return valid.includes(view) ? view : "overview";
 }
 
-function setActiveView(view) {
+function setActiveView(view, { resetScroll = true } = {}) {
+  const previousView = activeView;
   activeView = normalizeView(view);
   const titles = {
-    overview: "Übersicht",
-    accounts: "Konten",
+    overview: "Start",
+    accounts: "Geld",
     budgets: "Budgets",
     transactions: "Buchungen",
-    calendar: "Kalender",
-    reports: "Reports",
+    reports: "Analyse",
+    more: "Mehr",
   };
   elements.appViews.forEach((section) => {
     section.hidden = section.dataset.view !== activeView;
@@ -553,6 +774,18 @@ function setActiveView(view) {
   });
   elements.viewTitle.textContent = titles[activeView] || "BudgetUp";
   closeFabMenu();
+  closeSummaryBreakdown();
+  if (resetScroll && previousView !== activeView) resetViewScroll();
+}
+
+function resetViewScroll() {
+  requestAnimationFrame(() => {
+    const shell = document.querySelector(".app-shell");
+    if (shell && shell.scrollTop) shell.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    window.scrollTo(0, 0);
+  });
 }
 
 function toggleFabMenu() {
@@ -565,6 +798,54 @@ function closeFabMenu() {
   elements.fabMenu.hidden = true;
   elements.fabButton.classList.remove("open");
   elements.fabButton.setAttribute("aria-expanded", "false");
+}
+
+function openSettingsModal() {
+  closeFabMenu();
+  closeEntryMenu();
+  elements.settingsModal.hidden = false;
+  document.body.classList.add("modal-open");
+  window.setTimeout(() => elements.settingsCloseButton.focus({ preventScroll: true }), 30);
+}
+
+function closeSettingsModal() {
+  if (elements.settingsModal.hidden) return;
+  elements.settingsModal.hidden = true;
+  document.body.classList.remove("modal-open");
+}
+
+function openBankInfoModal(event) {
+  event?.preventDefault();
+  closeFabMenu();
+  closeEntryMenu();
+  if (!elements.bankInfoModal) return;
+  elements.bankInfoModal.hidden = false;
+  document.body.classList.add("modal-open");
+  window.setTimeout(() => elements.bankInfoCloseButton?.focus({ preventScroll: true }), 30);
+}
+
+function closeBankInfoModal() {
+  if (!elements.bankInfoModal || elements.bankInfoModal.hidden) return;
+  elements.bankInfoModal.hidden = true;
+  document.body.classList.remove("modal-open");
+}
+
+function handleMoreAction(action) {
+  if (action === "category") {
+    openCategoryForm();
+    return;
+  }
+  if (action === "export") {
+    exportBackup();
+    return;
+  }
+  openSettingsModal();
+}
+
+function prepareModalForm(form) {
+  elements.editModalSlot.replaceChildren(form);
+  const title = form.querySelector("h2");
+  if (title?.id) elements.editModal.setAttribute("aria-labelledby", title.id);
 }
 
 function closeForm() {
@@ -580,6 +861,8 @@ function closeForm() {
   elements.categoryForm.classList.remove("modal-form");
   elements.categoryModalActions.hidden = true;
   elements.categoryDeleteButton.hidden = false;
+  elements.formTemplates.append(elements.entryForm, elements.assetForm, elements.categoryForm);
+  elements.editModal.setAttribute("aria-labelledby", "formTitle");
   activeFormKey = "";
   activeEditContext = null;
   clearFieldErrors();
@@ -614,7 +897,7 @@ function openEntryModal({ key, mode, type, id = "", showTypeChoice = false }) {
   }
   activeEditContext = { kind: type === "debt" ? "debt" : "entry", mode, id };
   activeFormKey = key;
-  elements.editModalSlot.append(elements.entryForm);
+  prepareModalForm(elements.entryForm);
   elements.assetForm.hidden = true;
   elements.categoryForm.hidden = true;
   elements.entryForm.hidden = false;
@@ -738,6 +1021,131 @@ function saveEntry(event) {
   else closeForm();
 }
 
+function saveQuickAdd() {
+  const raw = elements.quickAddInput.value.trim();
+  const type = selectedQuickAddType();
+  if (!raw) {
+    showMessage("Beispiel: 12,50 Kaffee Lebensmittel", "error");
+    elements.quickAddInput.focus();
+    return;
+  }
+  const parsed = parseQuickAdd(raw, type, getActiveContext(), elements.monthInput.value);
+  if (!parsed) {
+    showMessage("Bitte mit Betrag starten, z. B. 12,50 Kaffee Lebensmittel.", "error");
+    elements.quickAddInput.focus();
+    return;
+  }
+  if ((type === "expense" || type === "income") && !state.categories.some((category) => sameCategory(category.name, parsed.category))) {
+    state.categories.push({ id: createId(), name: parsed.category, budget: 0 });
+  }
+  const personId = targetPersonIdForNewItem();
+  if (type === "debt") {
+    state.debts.push({
+      id: createId(),
+      personId,
+      creditor: parsed.description,
+      totalAmount: parsed.amount,
+      paidSoFar: 0,
+      monthlyPayment: parsed.monthlyPayment || 0,
+      startDate: quickAddDate(),
+      endDate: "",
+      status: "open",
+      paymentMethod: "",
+      account: "",
+      liabilityType: inferLiabilityType({ creditor: parsed.description, note: "Quick Add", account: "" }),
+      principalAmount: 0,
+      interestAmount: 0,
+      nominalRate: 0,
+      termMonths: 0,
+      finalPayment: 0,
+      note: "Quick Add",
+    });
+  } else if (type === "asset") {
+    state.assets.push({
+      id: createId(),
+      personId,
+      type: inferAssetType({ name: parsed.description, note: parsed.category }),
+      name: parsed.description,
+      amount: parsed.amount,
+      note: "Quick Add",
+    });
+  } else {
+    state.entries.push({
+      id: createId(),
+      personId,
+      type,
+      date: quickAddDate(),
+      category: parsed.category,
+      description: parsed.description,
+      payment: "Karte",
+      amount: parsed.amount,
+      recurring: false,
+      endDate: "",
+      status: "open",
+      updatedAt: Date.now(),
+    });
+  }
+  elements.quickAddInput.value = "";
+  persist();
+  render();
+  showMessage(`${quickAddTypeLabel(type)} gespeichert.`, "success");
+}
+
+function selectedQuickAddType() {
+  return [...elements.quickAddTypeInputs].find((input) => input.checked)?.value || "expense";
+}
+
+function quickAddTypeLabel(type) {
+  return {
+    expense: "Ausgabe",
+    income: "Einnahme",
+    debt: "Schuld",
+    asset: "Vermögen",
+  }[type] || "Eintrag";
+}
+
+function parseQuickAdd(raw, type = "expense", context = getActiveContext(), month = elements.monthInput.value) {
+  const match = String(raw || "").trim().match(/^([+-]?\d+(?:[.,]\d{1,2})?)(?:\s*€)?\s+(.+)$/);
+  if (!match) return null;
+  const amount = parseMoneyInput(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const words = match[2].trim().split(/\s+/).filter(Boolean);
+  const monthlyIndex = words.findIndex((word) => /^monatlich$/i.test(word));
+  let monthlyPayment = 0;
+  if (monthlyIndex > 0) {
+    const possibleRate = parseMoneyInput(words[monthlyIndex - 1]);
+    if (Number.isFinite(possibleRate) && possibleRate > 0) {
+      monthlyPayment = possibleRate;
+      words.splice(monthlyIndex - 1, 2);
+    }
+  }
+  const categoryNames = uniqueCategoryNames([...state.categories.map((category) => category.name), ...STANDARD_CATEGORY_NAMES, "Einkommen", "Gehalt"]);
+  const categoryWord = words.find((word) => categoryNames.some((name) => sameCategory(name, word)));
+  const category = categoryNames.find((name) => sameCategory(name, categoryWord)) || (type === "income" ? "Einkommen" : "Sonstiges");
+  const descriptionWords = categoryWord ? words.filter((word) => !sameCategory(word, categoryWord)) : words;
+  const description = descriptionWords.join(" ").trim() || defaultQuickAddDescription(type, category);
+  return {
+    amount: Math.abs(amount),
+    type,
+    category,
+    description,
+    monthlyPayment,
+    contextId: context.id,
+    date: monthToDate(month),
+  };
+}
+
+function defaultQuickAddDescription(type, category) {
+  if (type === "debt") return "Schuld";
+  if (type === "asset") return "Vermögen";
+  return type === "income" ? "Einnahme" : category || "Ausgabe";
+}
+
+function quickAddDate() {
+  const today = localDateString(new Date());
+  return today.slice(0, 7) === elements.monthInput.value ? today : monthToDate(elements.monthInput.value);
+}
+
 function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
   const nextType = type || (showTypeChoice ? "expense" : elements.typeInput.value || "expense");
   elements.entryForm.reset();
@@ -805,6 +1213,7 @@ function saveDebtFromMainForm() {
     status: normalizeStatus(elements.debtStatusInput.value),
     paymentMethod: elements.debtPaymentMethodInput.value,
     account: elements.debtAccountInput.value.trim(),
+    liabilityType: inferLiabilityType({ creditor: elements.creditorInput.value.trim(), account: elements.debtAccountInput.value.trim(), note: "" }),
     principalAmount: Number.isFinite(principalAmount) ? principalAmount : 0,
     interestAmount: Number.isFinite(interestAmount) ? interestAmount : 0,
     nominalRate: Number.isFinite(nominalRate) ? nominalRate : 0,
@@ -854,11 +1263,14 @@ function removeCategory(id) {
 }
 
 function render() {
+  fillContextSelect();
   fillPersonSelect();
   fillCategorySelect();
   renderCategories();
   renderPeople();
   renderDetailTitles();
+  renderMoneyStructure();
+  renderBankConnect();
   renderDebts();
   renderAssets();
   renderEntries();
@@ -866,6 +1278,21 @@ function render() {
   renderBudgets();
   renderCalendar();
   renderReports();
+}
+
+function fillContextSelect() {
+  const options = [
+    { id: "all", name: "Gesamt" },
+    ...visiblePeople().map((person) => ({ id: person.id, name: person.name })),
+  ];
+  elements.contextSelect.innerHTML = options
+    .map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`)
+    .join("");
+  if (options.some((person) => person.id === state.selectedPersonId)) {
+    elements.contextSelect.value = state.selectedPersonId;
+  } else {
+    elements.contextSelect.value = "all";
+  }
 }
 
 function fillPersonSelect() {
@@ -950,18 +1377,52 @@ function selectPerson(id) {
 function renderDetailTitles() {
   const suffix = selectedPersonName();
   const month = elements.monthInput.value;
-  const totals = selectedMonthlyTotals(month);
-  const debt = selectedDebtTotal(month);
-  const assetTotal = state.assets
-  .filter(includeInSelectedTotal)
-  .reduce((total, asset) => total + Number(asset.amount || 0), 0);
+  const totals = calculateMonthSummary(month);
   elements.debtTitle.textContent = `Schulden - ${suffix}`;
-  elements.debtTotalMini.textContent = formatMoney.format(debt);
+  elements.debtTotalMini.textContent = formatMoney.format(totals.totalDebt);
   elements.assetTitle.textContent = `Vermögen - ${suffix}`;
-  elements.assetTotalMini.textContent = formatMoney.format(assetTotal);
+  elements.assetTotalMini.textContent = formatMoney.format(totals.totalAssets);
   elements.entryTitle.textContent = `Einnahmen und Ausgaben - ${suffix}`;
   elements.entryIncomeMini.textContent = `Einn. ${formatMoney.format(totals.income)}`;
   elements.entryExpenseMini.textContent = `Ausg. ${formatMoney.format(totals.expense)}`;
+}
+
+function renderMoneyStructure() {
+  if (!elements.accountStructureList) return;
+  const month = elements.monthInput.value;
+  const buckets = calculateMoneyStructure(month);
+  elements.accountStructureList.innerHTML = buckets.map((bucket) => {
+    const amount = bucket.negative ? -Math.abs(bucket.amount) : bucket.amount;
+    const valueClass = amount < 0 ? "negative-text" : "positive-text";
+    return `
+      <article class="account-type-row">
+        <span class="account-type-icon">${escapeHtml(accountTypeInitial(bucket.label))}</span>
+        <div>
+          <strong>${escapeHtml(bucket.label)}</strong>
+          <small>${escapeHtml(bucket.count ? `${bucket.count} Eintrag${bucket.count === 1 ? "" : "e"} · ${bucket.hint}` : bucket.hint)}</small>
+        </div>
+        <b class="${valueClass}">${formatMoney.format(amount)}</b>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderBankConnect() {
+  const connections = getBankConnections();
+  const active = connections.filter((connection) => connection.status === "connected");
+  if (elements.bankStatusText) {
+    elements.bankStatusText.textContent = active.length
+      ? `${active.length} Verbindung${active.length === 1 ? "" : "en"} vorbereitet. Letzter Sync: ${formatNullableDate(active[0].lastSyncAt)}`
+      : "Noch nicht verbunden. CSV-Import bleibt die sichere Zwischenlösung.";
+  }
+  if (elements.bankProviderList) {
+    elements.bankProviderList.innerHTML = BANK_PROVIDERS.map((provider) => `
+      <article class="provider-row">
+        <span>${escapeHtml(provider.name)}</span>
+        <strong>${escapeHtml(provider.status)}</strong>
+      </article>
+    `).join("");
+  }
 }
 
 function editPerson(id) {
@@ -1016,40 +1477,13 @@ async function deletePerson(id) {
 }
 
 function monthlyTotalsForPerson(personId, month) {
-  const entries = state.entries.filter((entry) => (entry.personId || defaultPersonId()) === personId && isEntryActiveInMonth(entry, month));
-  const income = sum(entries.filter((entry) => entry.type === "income"));
-  const entryExpense = sum(entries.filter((entry) => entry.type === "expense"));
-  const debtExpense = state.debts
-    .filter((debt) => (debt.personId || defaultPersonId()) === personId && isDebtActiveInMonth(debt, month))
-    .reduce((total, debt) => total + Number(debt.monthlyPayment || 0), 0);
-  const expense = entryExpense + debtExpense;
-  const assets = state.assets
-    .filter((asset) => (asset.personId || defaultPersonId()) === personId)
-    .reduce((total, asset) => total + Number(asset.amount || 0), 0);
-  const debt = state.debts
-    .filter((d) => (d.personId || defaultPersonId()) === personId)
-    .reduce((total, d) => total + remainingDebt(d, month), 0);
-  return { income, expense, assets, debt, balance: income - expense };
+  const summary = calculateMonthSummary(month, getActiveContext(personId));
+  return { income: summary.income, expense: summary.expense, assets: summary.totalAssets, debt: summary.totalDebt, balance: summary.balance };
 }
 
 function monthlyTotalsForFamily(month) {
-  const income = state.entries
-    .filter((entry) => !entry.duplicateOf && isEntryActiveInMonth(entry, month) && entry.type === "income")
-    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
-  const entryExpense = state.entries
-    .filter((entry) => !entry.duplicateOf && isEntryActiveInMonth(entry, month) && entry.type === "expense")
-    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
-  const debtExpense = state.debts
-    .filter((debt) => !debt.duplicateOf && isDebtActiveInMonth(debt, month))
-    .reduce((total, debt) => total + Number(debt.monthlyPayment || 0), 0);
-  const expense = entryExpense + debtExpense;
-  const assets = state.assets
-    .filter((asset) => !asset.duplicateOf)
-    .reduce((total, asset) => total + Number(asset.amount || 0), 0);
-  const debt = state.debts
-    .filter((d) => !d.duplicateOf)
-    .reduce((total, d) => total + remainingDebt(d, month), 0);
-  return { income, expense, assets, debt, balance: income - expense };
+  const summary = calculateMonthSummary(month, getActiveContext("all"));
+  return { income: summary.income, expense: summary.expense, assets: summary.totalAssets, debt: summary.totalDebt, balance: summary.balance };
 }
 
 function syncFormMode() {
@@ -1131,21 +1565,9 @@ function renderCategories() {
 
 function renderBudgets() {
   const month = elements.monthInput.value;
-  const expenses = state.entries
-    .filter(includeInSelectedTotal)
-    .filter((entry) => entry.type === "expense" && isEntryActiveInMonth(entry, month));
-  const spentByCategory = new Map();
-  expenses.forEach((entry) => {
-    const name = entry.category || "Sonstiges";
-    spentByCategory.set(name, (spentByCategory.get(name) || 0) + Number(entry.amount || 0));
-  });
-  const rows = uniqueCategoryNames(state.categories.map((category) => category.name))
-    .map((name) => state.categories.find((category) => sameCategory(category.name, name)))
-    .filter(Boolean);
-
-  const totalBudget = rows.reduce((total, category) => total + Number(category.budget || 0), 0);
-  const totalSpent = [...spentByCategory.values()].reduce((total, value) => total + value, 0);
-  elements.budgetOverviewMini.textContent = `${formatMoney.format(totalBudget - totalSpent)} übrig`;
+  const usage = calculateBudgetUsage(month);
+  const rows = usage.categories;
+  elements.budgetOverviewMini.textContent = `${formatMoney.format(usage.remaining)} übrig`;
 
   if (!rows.length) {
     elements.budgetList.innerHTML = `<p class="empty-state">Noch keine Budgets. Nutze den Plus-Button, um eine Kategorie anzulegen.</p>`;
@@ -1153,19 +1575,23 @@ function renderBudgets() {
   }
 
   elements.budgetList.innerHTML = rows.map((category) => {
-    const spent = spentByCategory.get(category.name) || 0;
+    const spent = usage.spentByCategory.get(category.name) || 0;
     const budget = Number(category.budget || 0);
     const remaining = budget - spent;
     const percent = budget > 0 ? Math.min(100, Math.max(0, (spent / budget) * 100)) : 0;
+    const status = budgetStatus(spent, budget);
+    const group = categoryGroup(category.name);
     return `
-      <article class="budget-row">
+      <article class="budget-row ${status.className}">
         <div class="budget-copy">
+          <small>${escapeHtml(group)}</small>
           <strong>${escapeHtml(category.name)}</strong>
-          <span>${formatMoney.format(spent)} ausgegeben · ${formatMoney.format(remaining)} übrig</span>
+          <span>${formatMoney.format(spent)} ausgegeben · ${formatMoney.format(remaining)} Rest</span>
           <div class="budget-progress" aria-hidden="true"><span style="width:${percent}%"></span></div>
         </div>
         <div class="budget-side">
           <b>${formatMoney.format(budget)}</b>
+          <span class="status-badge ${status.badgeClass}">${escapeHtml(status.label)}</span>
           <button class="icon-button" type="button" title="Budget bearbeiten" aria-label="Budget bearbeiten" data-category-edit="${escapeHtml(category.id)}">✎</button>
         </div>
       </article>
@@ -1187,7 +1613,7 @@ function openCategoryForm(id = "") {
   resetCategoryForm();
   activeEditContext = { kind: "category", mode, id };
   activeFormKey = key;
-  elements.editModalSlot.append(elements.categoryForm);
+  prepareModalForm(elements.categoryForm);
   elements.entryForm.hidden = true;
   elements.assetForm.hidden = true;
   elements.categoryForm.hidden = false;
@@ -1247,29 +1673,55 @@ function renderEntries() {
   const month = elements.monthInput.value;
   const filter = elements.filterInput.value;
   const search = elements.transactionSearchInput.value.trim().toLowerCase();
-  const entries = state.entries
-    .filter((entry) => isEntryActiveInMonth(entry, month))
-    .filter(includeInSelectedTotal)
-    .filter((entry) => filter === "all" || entry.type === filter || (filter === "recurring" && entry.recurring))
+  const entries = getEntriesForMonth(month)
+    .filter((entry) => {
+      if (filter === "all") return true;
+      if (filter === "recurring") return entry.recurring;
+      if (filter === "open" || filter === "paid") return normalizeStatus(entry.status) === filter;
+      return entry.type === filter;
+    })
     .filter((entry) => {
       if (!search) return true;
       return [entry.description, entry.category, entry.payment, personName(entry.personId)]
         .some((value) => String(value || "").toLowerCase().includes(search));
     })
     .sort((a, b) => {
-      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+      const dateDiff = entryOccurrenceDate(b, month).localeCompare(entryOccurrenceDate(a, month));
+      if (dateDiff !== 0) return dateDiff;
       const diff = Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
       if (diff !== 0) return diff;
-      return b.date.localeCompare(a.date);
+      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
+      return (a.description || "").localeCompare(b.description || "");
     });
 
   if (!entries.length) {
-    elements.entryList.innerHTML = `<p class="empty-state">Keine Einnahmen oder Ausgaben für ${escapeHtml(selectedPersonName())} in diesem Monat.</p>`;
+    elements.entryList.innerHTML = `<p class="empty-state">Keine passenden Buchungen für ${escapeHtml(selectedPersonName())} in diesem Monat.</p>`;
     return;
   }
 
-  elements.entryList.innerHTML = entries.map((entry) => transactionRowHtml(entry, month)).join("");
+  elements.entryList.innerHTML = groupedTransactionHtml(entries, month);
   wireEntryRowActions(elements.entryList);
+}
+
+function groupedTransactionHtml(entries, month) {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const date = entryOccurrenceDate(entry, month);
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(entry);
+  });
+  return [...groups.entries()].map(([date, rows]) => {
+    const net = rows.reduce((total, entry) => total + (entry.type === "income" ? Number(entry.amount || 0) : -Number(entry.amount || 0)), 0);
+    return `
+      <section class="entry-date-group">
+        <header class="entry-date-group-title">
+          <span>${formatDateFull(date)}</span>
+          <strong class="${net >= 0 ? "positive-text" : "negative-text"}">${net >= 0 ? "+" : ""}${formatMoney.format(net)}</strong>
+        </header>
+        ${rows.map((entry) => transactionRowHtml(entry, month)).join("")}
+      </section>
+    `;
+  }).join("");
 }
 
 function transactionRowHtml(entry, monthOrDate) {
@@ -1309,9 +1761,7 @@ function wireEntryRowActions(root) {
 
 function renderDebts() {
   const month = elements.monthInput.value;
-  const debts = state.debts
-    .filter((debt) => isDebtVisibleInMonth(debt, month))
-    .filter(includeInSelectedTotal)
+  const debts = getDebtsForMonth(month)
     .sort((a, b) => a.creditor.localeCompare(b.creditor));
 
   if (!debts.length) {
@@ -1382,8 +1832,7 @@ function debtProgressPercent(debt, month) {
 }
 
 function renderAssets() {
-  const assets = state.assets
-    .filter(includeInSelectedTotal)
+  const assets = getAssetsForContext()
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!assets.length) {
@@ -1401,7 +1850,7 @@ function renderAssets() {
             <button class="icon-button" type="button" title="Löschen" aria-label="Löschen" data-asset-delete="${asset.id}">×</button>
           </span>
         </div>
-        <span>${escapeHtml([personName(asset.personId), asset.note || "Plus-Wert"].filter(Boolean).join(" · "))}</span>
+        <span>${escapeHtml([personName(asset.personId), assetTypeLabel(asset), asset.note || "Plus-Wert"].filter(Boolean).join(" · "))}</span>
       </div>
       <strong class="asset-amount">${formatMoney.format(asset.amount || 0)}</strong>
     </article>
@@ -1426,7 +1875,7 @@ function openAssetForm(id = "") {
   resetAssetForm();
   activeEditContext = { kind: "asset", mode, id };
   activeFormKey = key;
-  elements.editModalSlot.append(elements.assetForm);
+  prepareModalForm(elements.assetForm);
   elements.entryForm.hidden = true;
   elements.categoryForm.hidden = true;
   elements.assetForm.hidden = false;
@@ -1441,11 +1890,13 @@ function openAssetForm(id = "") {
     if (!asset) return;
     elements.assetId.value = asset.id;
     elements.assetPersonInput.value = asset.personId || defaultPersonId();
+    elements.assetTypeInput.value = normalizeAssetType(asset.type || inferAssetType(asset));
     elements.assetNameInput.value = asset.name;
     elements.assetAmountInput.value = formatMoneyInput(asset.amount);
     elements.assetNoteInput.value = asset.note || "";
   } else {
     elements.assetPersonInput.value = targetPersonIdForNewItem();
+    elements.assetTypeInput.value = "cash";
   }
 
   elements.editModal.hidden = false;
@@ -1493,6 +1944,7 @@ function saveAsset(event) {
   const asset = {
     id: elements.assetId.value || createId(),
     personId: elements.assetPersonInput.value || defaultPersonId(),
+    type: normalizeAssetType(elements.assetTypeInput.value),
     name,
     amount,
     note: elements.assetNoteInput.value.trim() || "manuell",
@@ -1548,9 +2000,7 @@ function renderSummary() {
 }
 
 function renderInsights(month, summary) {
-  const monthEntries = state.entries
-    .filter(includeInSelectedTotal)
-    .filter((entry) => isEntryActiveInMonth(entry, month));
+  const monthEntries = getEntriesForMonth(month);
   const expenseByCategory = new Map();
   monthEntries
     .filter((entry) => entry.type === "expense")
@@ -1593,6 +2043,28 @@ function renderInsights(month, summary) {
   elements.carryoverHint.textContent = carryoverItems.length
     ? `${formatMonthName(shiftMonth(month, 1))}: ${carryoverItems.slice(0, 2).map((item) => item.label).join(", ")}${carryoverItems.length > 2 ? " ..." : ""}`
     : `Keine offenen Übernahmen nach ${formatMonthName(shiftMonth(month, 1))}`;
+
+  const expenses = monthEntries.filter((entry) => entry.type === "expense");
+  const biggestExpense = expenses
+    .slice()
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))[0];
+  elements.biggestExpenseValue.textContent = biggestExpense ? formatMoney.format(biggestExpense.amount) : formatMoney.format(0);
+  elements.biggestExpenseHint.textContent = biggestExpense
+    ? `${biggestExpense.description || biggestExpense.category} · ${formatDateFull(entryOccurrenceDate(biggestExpense, month))}`
+    : "Noch keine Ausgaben";
+
+  const topCategory = topCategories[0];
+  elements.topSpendValue.textContent = topCategory ? formatMoney.format(topCategory[1]) : formatMoney.format(0);
+  elements.topSpendHint.textContent = topCategory ? topCategory[0] : "Noch keine Kategorie";
+
+  const nextPayment = nextPaymentForMonth(month);
+  elements.nextPaymentValue.textContent = nextPayment ? formatMoney.format(nextPayment.amount) : formatMoney.format(0);
+  elements.nextPaymentHint.textContent = nextPayment ? `${nextPayment.label} · ${formatDateFull(nextPayment.date)}` : "Keine geplanten Zahlungen";
+
+  const weekSpend = weeklyExpenseTotal(localDateString(new Date()));
+  elements.weekSpendValue.textContent = formatMoney.format(weekSpend);
+  elements.weekSpendValue.classList.toggle("negative-text", weekSpend > 0);
+  elements.weekSpendHint.textContent = weekSpend > 0 ? "Ausgaben der laufenden Woche" : "Diese Woche noch ruhig";
 }
 
 function insightLine(label, value, hint = "") {
@@ -1610,7 +2082,7 @@ function renderCalendar() {
   const selectedMonth = selectedCalendarDay.slice(0, 7) === month ? selectedCalendarDay : monthToDate(month);
   if (selectedCalendarDay.slice(0, 7) !== month) selectedCalendarDay = selectedMonth;
   elements.calendarTitle.textContent = formatMonthName(month);
-  elements.calendarSubtitle.textContent = "Einnahmen und Ausgaben pro Tag";
+  elements.calendarSubtitle.textContent = "Tage mit Buchungen werden hervorgehoben";
 
   const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
   const [year, monthIndex] = month.split("-").map(Number);
@@ -1628,10 +2100,18 @@ function renderCalendar() {
     const net = totals.income - totals.expense;
     const isSelected = date === selectedCalendarDay;
     const isToday = date === localDateString(new Date());
+    const weekday = new Date(`${date}T12:00:00`).getDay();
+    const markers = [
+      totals.income ? `<i class="calendar-marker income" title="Einnahmen"></i>` : "",
+      totals.entryExpense ? `<i class="calendar-marker expense" title="Ausgaben"></i>` : "",
+      totals.debtExpense ? `<i class="calendar-marker debt" title="Schulden"></i>` : "",
+      totals.recurring ? `<i class="calendar-marker recurring" title="Wiederkehrend"></i>` : "",
+    ].filter(Boolean).join("");
     cells.push(`
-      <button class="calendar-day ${isSelected ? "selected" : ""} ${isToday ? "today" : ""}" type="button" data-calendar-day="${date}">
+      <button class="calendar-day ${isSelected ? "selected" : ""} ${isToday ? "today" : ""} ${weekday === 0 || weekday === 6 ? "weekend" : ""} ${totals.income ? "has-income" : ""} ${totals.expense ? "has-expense" : ""} ${totals.debtExpense ? "has-debt" : ""}" type="button" data-calendar-day="${date}">
         <span>${day}</span>
         ${totals.income || totals.expense ? `<small class="${net >= 0 ? "positive-text" : "negative-text"}">${formatCompactMoney(net)}</small>` : ""}
+        ${markers ? `<em class="calendar-markers" aria-hidden="true">${markers}</em>` : ""}
       </button>
     `);
   }
@@ -1646,28 +2126,65 @@ function renderCalendar() {
 }
 
 function renderCalendarDayList() {
-  const entries = entriesForDate(selectedCalendarDay)
-    .filter(includeInSelectedTotal)
+  const daySummary = getCalendarDaySummary(selectedCalendarDay);
+  const items = daySummary.items
     .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-  const total = entries.reduce((sumValue, entry) => sumValue + (entry.type === "income" ? Number(entry.amount || 0) : -Number(entry.amount || 0)), 0);
+  const total = daySummary.net;
   elements.calendarDayTitle.textContent = formatDateFull(selectedCalendarDay);
   elements.calendarDayTotal.textContent = `${total >= 0 ? "+" : ""}${formatMoney.format(total)}`;
   elements.calendarDayTotal.classList.toggle("income-pill", total >= 0);
   elements.calendarDayTotal.classList.toggle("expense-pill", total < 0);
-  if (!entries.length) {
-    elements.calendarDayList.innerHTML = `<p class="empty-state">Keine Buchungen an diesem Tag.</p>`;
+  if (!items.length) {
+    elements.calendarDayList.innerHTML = `<p class="empty-state calendar-empty">Keine Buchungen an diesem Tag. Nutze +, wenn du etwas erfassen möchtest.</p>`;
     return;
   }
-  elements.calendarDayList.innerHTML = entries.map((entry) => transactionRowHtml(entry, selectedCalendarDay)).join("");
+  elements.calendarDayList.innerHTML = items.map((item) => item.kind === "debt" ? calendarDebtRowHtml(item) : transactionRowHtml(item, selectedCalendarDay)).join("");
   wireEntryRowActions(elements.calendarDayList);
 }
 
 function dailyTotals(date) {
-  const entries = entriesForDate(date).filter(includeInSelectedTotal);
-  return {
-    income: sum(entries.filter((entry) => entry.type === "income")),
-    expense: sum(entries.filter((entry) => entry.type === "expense")),
-  };
+  return getCalendarDaySummary(date);
+}
+
+function calendarItemsForDate(date, context = getActiveContext()) {
+  const month = date.slice(0, 7);
+  const entries = entriesForDate(date)
+    .filter((entry) => contextMatchesItem(entry, context))
+    .map((entry) => ({ ...entry, kind: "entry" }));
+  const debtItems = activeDebts(month)
+    .filter((debt) => contextMatchesItem(debt, context))
+    .filter((debt) => Number(debt.monthlyPayment || 0) > 0 && debtOccurrenceDate(debt, month) === date)
+    .map((debt) => ({
+      kind: "debt",
+      id: `debt-${debt.id}`,
+      sourceId: debt.id,
+      type: "expense",
+      personId: debt.personId,
+      date,
+      category: "Schulden",
+      description: debt.creditor || "Schuld",
+      payment: debt.paymentMethod || "Rate",
+      amount: Number(debt.monthlyPayment || 0),
+      updatedAt: Date.parse(`${date}T12:00:00`) || 0,
+    }));
+  return [...entries, ...debtItems];
+}
+
+function calendarDebtRowHtml(item) {
+  const meta = [personName(item.personId), item.category, displayText(item.payment)].filter(Boolean).join(" · ");
+  return `
+    <article class="entry-row debt-calendar expense">
+      <time class="entry-date" datetime="${item.date}">${formatDate(item.date)}</time>
+      <div class="entry-main">
+        <div class="row-heading">
+          <strong>${escapeHtml(item.description)}</strong>
+          <span class="status-badge status-carry">Schuldenrate</span>
+        </div>
+        <span>${escapeHtml(meta)}</span>
+      </div>
+      <div class="entry-amount expense">-${formatMoney.format(item.amount)}</div>
+    </article>
+  `;
 }
 
 function entriesForDate(date) {
@@ -1680,13 +2197,33 @@ function entriesForDate(date) {
 
 function renderReports() {
   const month = elements.monthInput.value;
-  const summary = summaryTotals(month);
+  const insights = calculateInsightSummary(month);
+  const summary = insights.summary;
   const ratio = summary.income > 0 ? Math.round((summary.expense / summary.income) * 100) : 0;
   elements.reportsRatioValue.textContent = `${ratio} %`;
   elements.reportsRatioHint.textContent = `${formatMoney.format(summary.expense)} von ${formatMoney.format(summary.income)} ausgegeben`;
   elements.reportsNetWorthValue.textContent = formatMoney.format(summary.netWorth);
   elements.reportsNetWorthHint.textContent = `${formatMoney.format(summary.totalAssets)} Vermögen · ${formatMoney.format(summary.totalDebt)} Schulden`;
+  elements.reportsDebtValue.textContent = formatMoney.format(summary.totalDebt);
+  elements.reportsDebtHint.textContent = summary.debtMonthlyCost > 0
+    ? `${formatMoney.format(summary.debtMonthlyCost)} monatliche Raten`
+    : "keine aktiven Raten";
   elements.reportsMonthMini.textContent = formatMoney.format(summary.balance);
+
+  elements.reportsOptimizationList.innerHTML = optimizationInsights(insights)
+    .map((item) => insightLine(item.label, item.value, item.hint))
+    .join("") || `<p class="empty-state compact-empty">Noch zu wenig Daten für Hinweise.</p>`;
+
+  const frequent = [...insights.byDescription.entries()]
+    .sort((a, b) => b[1].count - a[1].count || b[1].amount - a[1].amount)
+    .slice(0, 3);
+  elements.reportsFrequentList.innerHTML = frequent.length
+    ? frequent.map(([name, item]) => insightLine(name, `${item.count}×`, formatMoney.format(item.amount))).join("")
+    : `<p class="empty-state compact-empty">Keine Ausgaben gefunden.</p>`;
+
+  elements.reportsLargestList.innerHTML = insights.largestPayments.length
+    ? insights.largestPayments.map((entry) => insightLine(entry.description || entry.category, formatMoney.format(entry.amount), formatDateFull(entryOccurrenceDate(entry, month)))).join("")
+    : `<p class="empty-state compact-empty">Keine Einzelzahlungen gefunden.</p>`;
 
   const months = Array.from({ length: 6 }, (_, index) => shiftMonth(month, index - 5));
   elements.reportsTrendList.innerHTML = months.map((itemMonth) => {
@@ -1704,24 +2241,7 @@ function renderReports() {
 }
 
 function summaryTotals(month) {
-  const monthEntries = state.entries
-    .filter(includeInSelectedTotal)
-    .filter((entry) => isEntryActiveInMonth(entry, month));
-  const income = sum(monthEntries.filter((entry) => entry.type === "income"));
-  const entryExpense = sum(monthEntries.filter((entry) => entry.type === "expense"));
-  const debtMonthlyCost = activeDebts(month)
-    .filter(includeInSelectedTotal)
-    .reduce((total, debt) => total + Number(debt.monthlyPayment || 0), 0);
-  const totalDebt = state.debts
-    .filter(includeInSelectedTotal)
-    .reduce((total, debt) => total + remainingDebt(debt, month), 0);
-  const totalAssets = state.assets
-    .filter(includeInSelectedTotal)
-    .reduce((total, asset) => total + Number(asset.amount || 0), 0);
-  const expense = entryExpense + debtMonthlyCost;
-  const balance = income - expense;
-  const netWorth = totalAssets - totalDebt;
-  return { income, entryExpense, debtMonthlyCost, expense, balance, totalDebt, totalAssets, netWorth };
+  return calculateMonthSummary(month);
 }
 
 function renderMonthComparison(month) {
@@ -1801,25 +2321,19 @@ function summaryBreakdownRow(row) {
 
 function summaryBreakdownData(type) {
   const month = elements.monthInput.value;
-  const entries = state.entries
-    .filter(includeInSelectedTotal)
-    .filter((entry) => isEntryActiveInMonth(entry, month));
+  const entries = getEntriesForMonth(month);
   const incomeRows = entries
     .filter((entry) => entry.type === "income")
     .map((entry) => entrySummaryRow(entry, Number(entry.amount || 0)));
   const expenseRows = entries
     .filter((entry) => entry.type === "expense")
     .map((entry) => entrySummaryRow(entry, Number(entry.amount || 0)));
-  const debtRateRows = activeDebts(month)
-    .filter(includeInSelectedTotal)
+  const debtRateRows = getDebtsForMonth(month, getActiveContext(), { activeOnly: true })
     .filter((debt) => Number(debt.monthlyPayment || 0) > 0)
     .map((debt) => debtSummaryRow(debt, Number(debt.monthlyPayment || 0), "monatliche Rate"));
-  const debtRows = state.debts
-    .filter(includeInSelectedTotal)
-    .filter((debt) => isDebtVisibleInMonth(debt, month))
+  const debtRows = getDebtsForMonth(month)
     .map((debt) => debtSummaryRow(debt, remainingDebt(debt, month), "Restschuld"));
-  const assetRows = state.assets
-    .filter(includeInSelectedTotal)
+  const assetRows = getAssetsForContext()
     .map((asset) => ({
       title: asset.name || "Vermögen",
       meta: [personName(asset.personId), asset.note || ""].filter(Boolean).join(" · "),
@@ -1987,6 +2501,7 @@ async function exportBackup() {
       entries: state.entries.filter(belongs),
       debts: state.debts.filter(belongs),
       assets: state.assets.filter(belongs),
+      bankConnections: getBankConnections(),
       people: person ? [person] : [],
       selectedPersonId: choice,
     };
@@ -2029,6 +2544,7 @@ function importBackup(event) {
         state.entries = imported.entries.map(normalizeEntry);
         state.debts = Array.isArray(imported.debts) ? imported.debts.map(normalizeDebt) : [];
         state.assets = Array.isArray(imported.assets) ? imported.assets.map(normalizeAsset) : [];
+        state.bankConnections = Array.isArray(imported.bankConnections) ? imported.bankConnections.map(normalizeBankConnection) : [];
         state.people = Array.isArray(imported.people) ? imported.people.map(normalizePerson) : state.people;
         showMessage("Backup importiert.");
       }
@@ -2205,6 +2721,7 @@ function importPersonalBudgetLayout(rows) {
           status: "open",
           paymentMethod: "",
           account: "",
+          liabilityType: "other",
           note: "",
         });
         importedDebts += 1;
@@ -2212,6 +2729,7 @@ function importPersonalBudgetLayout(rows) {
         state.assets.push({
           id: createId(),
           personId: defaultPersonId(),
+          type: inferAssetType({ name: rightName, note: "aus Excel" }),
           name: rightName,
           amount: rightAmount,
           note: "aus Excel",
@@ -2309,6 +2827,7 @@ async function clearAllData() {
     state.entries = [];
     state.debts = [];
     state.assets = [];
+    state.bankConnections = [];
   } else {
     const pid = state.selectedPersonId;
     const belongs = (item) => (item.personId || defaultPersonId()) === pid;
@@ -2744,7 +3263,7 @@ function clearFieldError(target) {
 }
 
 function clearFieldErrors() {
-  [elements.entryForm, elements.assetForm].forEach((form) => {
+  [elements.entryForm, elements.assetForm, elements.categoryForm].forEach((form) => {
     form.querySelectorAll(".field-error").forEach((label) => label.classList.remove("field-error"));
     form.querySelectorAll(".input-error, [aria-invalid='true']").forEach((input) => {
       input.classList.remove("input-error");
@@ -2809,6 +3328,115 @@ function sum(entries) {
   return entries.reduce((total, entry) => total + Number(entry.amount || 0), 0);
 }
 
+function totalsBy(items, keyFn) {
+  const map = new Map();
+  items.forEach((item) => {
+    const key = keyFn(item);
+    const current = map.get(key) || { amount: 0, count: 0 };
+    current.amount += Number(item.amount || 0);
+    current.count += 1;
+    map.set(key, current);
+  });
+  return map;
+}
+
+function topMapEntry(map) {
+  const rows = [...map.entries()].sort((a, b) => b[1].amount - a[1].amount);
+  return rows[0] || null;
+}
+
+function normalizeAssetType(type) {
+  return ASSET_TYPES[type] ? type : "other";
+}
+
+function inferAssetType(asset) {
+  const text = `${asset.name || ""} ${asset.note || ""}`.toLowerCase();
+  if (/bar|cash|kasse/.test(text)) return "cash";
+  if (/spar|rücklage|tagesgeld|reserve/.test(text)) return "savings";
+  if (/depot|etf|aktie|fonds|krypto|investment|invest/.test(text)) return "investment";
+  if (/auto|immobil|wohnung|haus|sachwert|gold/.test(text)) return "property";
+  if (/konto|bank|giro|n26|sparkasse|ing/.test(text)) return "bank";
+  return "other";
+}
+
+function assetTypeLabel(asset) {
+  return ASSET_TYPES[normalizeAssetType(asset.type || inferAssetType(asset))] || ASSET_TYPES.other;
+}
+
+function inferLiabilityType(debt) {
+  const text = `${debt.creditor || ""} ${debt.note || ""} ${debt.account || ""}`.toLowerCase();
+  if (/kreditkarte|credit card|visa|mastercard/.test(text)) return "credit_card";
+  if (/rate|raten|finanzierung/.test(text)) return "installment";
+  if (/privat|freund|familie/.test(text)) return "private_debt";
+  if (/kredit|loan|bank/.test(text)) return "loan";
+  return "other";
+}
+
+function accountTypeInitial(label) {
+  return String(label || "?").slice(0, 1).toUpperCase();
+}
+
+function categoryGroup(name) {
+  const key = String(name || "").toLowerCase();
+  if (/miete|wohnen|strom|gas|nebenkosten/.test(key)) return "Wohnen";
+  if (/lebensmittel|essen|food|supermarkt/.test(key)) return "Lebensmittel";
+  if (/mobil|transport|auto|bahn|taxi|fuel|benzin/.test(key)) return "Mobilität";
+  if (/abo|stream|software|subscription/.test(key)) return "Abos";
+  if (/versicherung/.test(key)) return "Versicherungen";
+  if (/gesund|arzt|apotheke/.test(key)) return "Gesundheit";
+  if (/bildung|kurs|schule|uni|buch/.test(key)) return "Bildung";
+  if (/freizeit|kino|restaurant|kaffee|hobby/.test(key)) return "Freizeit";
+  if (/reise|urlaub|hotel|flug/.test(key)) return "Reisen";
+  if (/familie|kind/.test(key)) return "Familie";
+  if (/schuld|kredit|rate/.test(key)) return "Schulden";
+  if (/einkommen|gehalt|lohn/.test(key)) return "Einkommen";
+  if (/invest|depot|etf|aktie/.test(key)) return "Investments";
+  return "Sonstiges";
+}
+
+function budgetStatus(spent, budget) {
+  if (budget <= 0 && spent <= 0) return { label: "bereit", className: "budget-neutral", badgeClass: "status-recurring" };
+  if (budget <= 0 && spent > 0) return { label: "ohne Limit", className: "budget-watch", badgeClass: "status-open" };
+  const ratio = spent / budget;
+  if (ratio > 1) return { label: "überschritten", className: "budget-over", badgeClass: "status-open" };
+  if (ratio >= 0.8) return { label: "knapp", className: "budget-watch", badgeClass: "status-carry" };
+  return { label: "gut", className: "budget-good", badgeClass: "status-paid" };
+}
+
+function optimizationInsights(insights) {
+  const rows = [];
+  if (insights.topCategory) {
+    rows.push({
+      label: `${insights.topCategory[0]} ist am größten`,
+      value: formatMoney.format(insights.topCategory[1].amount),
+      hint: "prüfe hier zuerst dein Budget",
+    });
+  }
+  if (insights.recurringCount) {
+    rows.push({
+      label: "Wiederkehrende Kosten",
+      value: `${insights.recurringShare} %`,
+      hint: `${insights.recurringCount} aktive Zahlung${insights.recurringCount === 1 ? "" : "en"}`,
+    });
+  }
+  const daily = daysLeftInMonth(elements.monthInput.value) > 0
+    ? insights.summary.balance / daysLeftInMonth(elements.monthInput.value)
+    : insights.summary.balance;
+  rows.push({
+    label: "Rest pro Tag",
+    value: formatMoney.format(daily),
+    hint: daily >= 0 ? "aktueller Puffer" : "Budget ist überzogen",
+  });
+  return rows.slice(0, 3);
+}
+
+function formatNullableDate(value) {
+  if (!value) return "noch nie";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unbekannt";
+  return new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(date);
+}
+
 function formatDate(value) {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" }).format(new Date(`${value}T12:00:00`));
 }
@@ -2867,6 +3495,12 @@ function isEntryActiveInMonth(entry, month) {
 function entryOccurrenceDate(entry, month) {
   if (!entry.recurring || entry.date?.startsWith(month)) return entry.date;
   const day = Math.min(Number(entry.date?.slice(8, 10)) || 1, daysInMonth(month));
+  return `${month}-${String(day).padStart(2, "0")}`;
+}
+
+function debtOccurrenceDate(debt, month) {
+  const sourceDate = debt.startDate || monthToDate(month);
+  const day = Math.min(Number(sourceDate.slice(8, 10)) || 1, daysInMonth(month));
   return `${month}-${String(day).padStart(2, "0")}`;
 }
 
@@ -2934,15 +3568,51 @@ function formatMonthName(month) {
 
 function carryoverItemsForNextMonth(month) {
   const nextMonth = shiftMonth(month, 1);
-  const recurring = state.entries
-    .filter(includeInSelectedTotal)
-    .filter((entry) => entry.recurring && isEntryActiveInMonth(entry, nextMonth))
+  const recurring = getEntriesForMonth(nextMonth)
+    .filter((entry) => entry.recurring)
     .map((entry) => ({ label: entry.description || entry.category || "Buchung" }));
-  const debts = state.debts
-    .filter(includeInSelectedTotal)
-    .filter((debt) => isDebtActiveInMonth(debt, nextMonth))
+  const debts = getDebtsForMonth(nextMonth, getActiveContext(), { activeOnly: true })
     .map((debt) => ({ label: debt.creditor || "Schuld" }));
   return [...recurring, ...debts];
+}
+
+function nextPaymentForMonth(month) {
+  const today = localDateString(new Date());
+  const candidates = [
+    ...getEntriesForMonth(month)
+      .filter((entry) => entry.recurring && entry.type === "expense")
+      .map((entry) => ({
+        date: entryOccurrenceDate(entry, month),
+        amount: Number(entry.amount || 0),
+        label: entry.description || entry.category || "Wiederkehrend",
+      })),
+    ...getDebtsForMonth(month, getActiveContext(), { activeOnly: true })
+      .filter((debt) => Number(debt.monthlyPayment || 0) > 0)
+      .map((debt) => ({
+        date: debtOccurrenceDate(debt, month),
+        amount: Number(debt.monthlyPayment || 0),
+        label: debt.creditor || "Schuld",
+      })),
+  ].filter((item) => item.date >= (today.slice(0, 7) === month ? today : monthToDate(month)));
+  return candidates.sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount)[0] || null;
+}
+
+function weeklyExpenseTotal(date) {
+  const anchor = new Date(`${date}T12:00:00`);
+  const day = (anchor.getDay() + 6) % 7;
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() - day);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const startDate = localDateString(start);
+  const endDate = localDateString(end);
+  return getEntriesForMonth(date.slice(0, 7))
+    .filter((entry) => entry.type === "expense")
+    .filter((entry) => {
+      const occurrence = entryOccurrenceDate(entry, date.slice(0, 7));
+      return occurrence >= startDate && occurrence <= endDate;
+    })
+    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
 }
 
 function addMonths(month, amount) {
@@ -3043,6 +3713,7 @@ function normalizeDebt(debt) {
     status: normalizeStatus(debt.status || (Number(debt.paidSoFar || 0) >= Number(debt.totalAmount || 0) && Number(debt.totalAmount || 0) > 0 ? "paid" : "open")),
     paymentMethod: debt.paymentMethod || "",
     account: debt.account || "",
+    liabilityType: debt.liabilityType || inferLiabilityType(debt),
     principalAmount: Number(debt.principalAmount || 0),
     interestAmount: Number(debt.interestAmount || 0),
     nominalRate: Number(debt.nominalRate || 0),
@@ -3053,13 +3724,26 @@ function normalizeDebt(debt) {
 }
 
 function normalizeAsset(asset) {
+  const type = normalizeAssetType(asset.type || inferAssetType(asset));
   return {
     id: asset.id || createId(),
     personId: asset.personId || fallbackPersonId(),
     duplicateOf: asset.duplicateOf || "",
+    type,
     name: asset.name || "",
     amount: Number(asset.amount || 0),
     note: asset.note || "",
+  };
+}
+
+function normalizeBankConnection(connection) {
+  return {
+    id: connection.id || createId(),
+    provider: connection.provider || "",
+    status: connection.status || "not_connected",
+    lastSyncAt: connection.lastSyncAt || "",
+    consentExpiresAt: connection.consentExpiresAt || "",
+    accountIds: Array.isArray(connection.accountIds) ? connection.accountIds : [],
   };
 }
 
@@ -3111,19 +3795,15 @@ function matchesSelectedPerson(personId) {
 }
 
 function includeInSelectedTotal(item) {
-  if (!matchesSelectedPerson(item.personId)) return false;
-  if (state.selectedPersonId === "all" && item.duplicateOf) return false;
-  return true;
+  return contextMatchesItem(item);
 }
 
 function selectedMonthlyTotals(month) {
-  if (state.selectedPersonId === "all") return monthlyTotalsForFamily(month);
-  return monthlyTotalsForPerson(state.selectedPersonId, month);
+  return calculateMonthSummary(month);
 }
 
 function selectedDebtTotal(month) {
-  return state.debts
-    .filter(includeInSelectedTotal)
+  return getDebtsForMonth(month)
     .reduce((total, debt) => total + remainingDebt(debt, month), 0);
 }
 
@@ -3157,3 +3837,102 @@ function createId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
+
+function runBudgetUpSelfTest() {
+  const snapshot = clone({
+    categories: state.categories,
+    entries: state.entries,
+    debts: state.debts,
+    assets: state.assets,
+    bankConnections: state.bankConnections,
+    people: state.people,
+    selectedPersonId: state.selectedPersonId,
+  });
+  const previousMonth = elements.monthInput.value;
+  const results = [];
+  const assert = (name, condition, detail = "") => {
+    results.push({ name, pass: Boolean(condition), detail });
+  };
+
+  try {
+    state.people = [
+      { id: "shared-test", name: "Gemeinsam" },
+      { id: "p1-test", name: "Test Person" },
+      { id: "p2-test", name: "Andere Person" },
+    ];
+    state.selectedPersonId = "p1-test";
+    state.categories = [
+      { id: "cat-food", name: "Lebensmittel", budget: 300 },
+      { id: "cat-income", name: "Einkommen", budget: 0 },
+      { id: "cat-other", name: "Sonstiges", budget: 100 },
+    ];
+    state.entries = [
+      { id: "e-income", personId: "p1-test", type: "income", date: "2026-06-01", category: "Einkommen", description: "Gehalt", payment: "Überweisung", amount: 1000, recurring: false, endDate: "", status: "open", updatedAt: 1 },
+      { id: "e-expense", personId: "p1-test", type: "expense", date: "2026-06-05", category: "Lebensmittel", description: "Einkauf", payment: "Karte", amount: 100, recurring: false, endDate: "", status: "open", updatedAt: 2 },
+      { id: "e-recurring", personId: "p1-test", type: "expense", date: "2026-05-10", category: "Sonstiges", description: "Abo", payment: "Karte", amount: 50, recurring: true, endDate: "", status: "open", updatedAt: 3 },
+      { id: "e-ended", personId: "p1-test", type: "expense", date: "2026-05-15", category: "Sonstiges", description: "Endendes Abo", payment: "Karte", amount: 25, recurring: true, endDate: "2026-06-15", status: "open", updatedAt: 4 },
+      { id: "e-other", personId: "p2-test", type: "expense", date: "2026-06-05", category: "Sonstiges", description: "Andere Person", payment: "Karte", amount: 999, recurring: false, endDate: "", status: "open", updatedAt: 5 },
+    ];
+    state.debts = [
+      { id: "d-open", personId: "p1-test", creditor: "Bank", totalAmount: 500, paidSoFar: 100, monthlyPayment: 50, startDate: "2026-06-03", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
+      { id: "d-paid", personId: "p1-test", creditor: "Paid Bank", totalAmount: 300, paidSoFar: 300, monthlyPayment: 30, startDate: "2026-06-03", endDate: "", status: "paid", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
+    ];
+    state.assets = [
+      { id: "a-cash", personId: "p1-test", name: "Bargeld", amount: 200, note: "" },
+      { id: "a-other", personId: "p2-test", name: "Fremd", amount: 999, note: "" },
+    ];
+    elements.monthInput.value = "2026-06";
+
+    const context = getActiveContext("p1-test");
+    const june = calculateMonthSummary("2026-06", context);
+    const july = calculateMonthSummary("2026-07", context);
+    const budget = calculateBudgetUsage("2026-06", context);
+    const dayExpense = getCalendarDaySummary("2026-06-05", context);
+    const dayRecurring = getCalendarDaySummary("2026-06-10", context);
+    const dayDebt = getCalendarDaySummary("2026-06-03", context);
+    const family = calculateMonthSummary("2026-06", getActiveContext("all"));
+
+    assert("einmalige Einnahme", june.income === 1000, `income=${june.income}`);
+    assert("einmalige und wiederkehrende Ausgaben", june.entryExpense === 175, `entryExpense=${june.entryExpense}`);
+    assert("offene Schuld als Monatskosten", june.debtMonthlyCost === 50, `debtMonthlyCost=${june.debtMonthlyCost}`);
+    assert("Saldo korrekt", june.balance === 775, `balance=${june.balance}`);
+    assert("wiederkehrende Ausgabe ohne Enddatum läuft weiter", july.entryExpense === 50, `julyEntryExpense=${july.entryExpense}`);
+    assert("wiederkehrende Ausgabe mit Enddatum endet", !getEntriesForMonth("2026-07", context).some((entry) => entry.id === "e-ended"), "ended recurring should be absent in July");
+    assert("bezahlte Schuld wird nicht fortgeführt", !getDebtsForMonth("2026-06", context, { activeOnly: true }).some((debt) => debt.id === "d-paid"), "paid debt should be inactive");
+    assert("offene Restschuld korrekt", june.totalDebt === 350, `totalDebt=${june.totalDebt}`);
+    assert("Vermögen Kontext korrekt", june.totalAssets === 200, `totalAssets=${june.totalAssets}`);
+    assert("Nettovermögen korrekt", june.netWorth === -150, `netWorth=${june.netWorth}`);
+    assert("Kontext Person filtert andere Person", june.entryExpense !== family.entryExpense && family.entryExpense === 1174, `familyEntryExpense=${family.entryExpense}`);
+    assert("Budget geplant/ausgegeben/übrig", budget.totalBudget === 400 && budget.totalSpent === 175 && budget.remaining === 225 && budget.spentByCategory.get("Lebensmittel") === 100 && budget.spentByCategory.get("Sonstiges") === 75, `totalSpent=${budget.totalSpent}, remaining=${budget.remaining}`);
+    assert("Kalender Tageswert Ausgabe", dayExpense.expense === 100 && dayExpense.net === -100, JSON.stringify(dayExpense));
+    assert("Kalender Tageswert wiederkehrend", dayRecurring.expense === 50 && dayRecurring.recurring, JSON.stringify(dayRecurring));
+    assert("Kalender Tageswert Schuld", dayDebt.debtExpense === 50 && dayDebt.net === -50, JSON.stringify(dayDebt));
+
+    const quickExpense = parseQuickAdd("12,50 Kaffee Lebensmittel", "expense", context, "2026-06");
+    const quickIncome = parseQuickAdd("200 Upwork Einkommen", "income", context, "2026-06");
+    const quickDebt = parseQuickAdd("500 Targobank Kredit 50 monatlich", "debt", context, "2026-06");
+    const quickAsset = parseQuickAdd("300 Bargeld", "asset", context, "2026-06");
+    assert("QuickAdd Ausgabe Parser", quickExpense?.amount === 12.5 && quickExpense.category === "Lebensmittel" && quickExpense.description === "Kaffee", JSON.stringify(quickExpense));
+    assert("QuickAdd Einnahme Parser", quickIncome?.amount === 200 && quickIncome.category === "Einkommen" && quickIncome.description === "Upwork", JSON.stringify(quickIncome));
+    assert("QuickAdd Schuld Parser", quickDebt?.amount === 500 && quickDebt.monthlyPayment === 50 && quickDebt.description === "Targobank Kredit", JSON.stringify(quickDebt));
+    assert("QuickAdd Vermögen Parser", quickAsset?.amount === 300 && quickAsset.description === "Bargeld", JSON.stringify(quickAsset));
+  } finally {
+    state.categories = snapshot.categories;
+    state.entries = snapshot.entries;
+    state.debts = snapshot.debts;
+    state.assets = snapshot.assets;
+    state.bankConnections = snapshot.bankConnections;
+    state.people = snapshot.people;
+    state.selectedPersonId = snapshot.selectedPersonId;
+    elements.monthInput.value = previousMonth;
+    ensurePeople();
+    render();
+  }
+
+  const passed = results.filter((result) => result.pass).length;
+  const failed = results.length - passed;
+  const summary = { passed, failed, results };
+  return summary;
+}
+
+window.runBudgetUpSelfTest = runBudgetUpSelfTest;

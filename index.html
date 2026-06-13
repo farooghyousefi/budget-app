@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=78" />
+    <link rel="manifest" href="manifest.webmanifest?v=82" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=78" />
+    <link rel="stylesheet" href="styles.css?v=82" />
   </head>
   <body>
     <main class="app-shell">
@@ -19,13 +19,26 @@
         <button class="round-action" type="button" aria-label="Info">i</button>
         <div class="app-title-block">
           <p class="eyebrow">BudgetUp</p>
-          <h1 id="viewTitle">Übersicht</h1>
+          <h1 id="viewTitle">Start</h1>
         </div>
+        <button id="settingsButton" class="round-action settings-button" type="button" aria-label="Einstellungen">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6Z"></path>
+            <path d="M19.1 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L13.8 2h-3.6l-.4 3.1a8.2 8.2 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 3.1h3.6l.4-3.1a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2.1-1.5Z"></path>
+          </svg>
+        </button>
+      </header>
+
+      <section class="context-strip" aria-label="Aktiver Kontext">
+        <label class="context-picker">
+          <span>Kontext</span>
+          <select id="contextSelect" aria-label="Aktiven Kontext auswählen"></select>
+        </label>
         <label class="month-picker">
           <span>Monat</span>
           <input id="monthInput" type="month" />
         </label>
-      </header>
+      </section>
 
       <p id="formMessage" class="form-message app-toast" role="status"></p>
 
@@ -45,22 +58,22 @@
             <strong id="overviewExpenseValue">0,00 €</strong>
           </article>
           <article class="metric debt-metric" data-summary="debt">
-            <span>Offene Schulden</span>
+            <span>Verpflichtungen</span>
             <strong id="totalDebtValue">0,00 €</strong>
           </article>
           <article class="metric net-metric" data-summary="net">
-            <span>Netto-Status</span>
+            <span>Nettovermögen</span>
             <strong id="netWorthValue">0,00 €</strong>
           </article>
         </section>
         <section class="overview-cards">
           <article class="insight-card">
-            <span>Restbudget</span>
+            <span>Rest pro Tag</span>
             <strong id="restBudgetValue">0,00 €</strong>
             <small id="restBudgetHint">Für diesen Monat</small>
           </article>
           <article class="insight-card">
-            <span>Wiederkehrend</span>
+            <span>Fixkosten</span>
             <strong id="overviewRecurringValue">0,00 €</strong>
             <small id="overviewRecurringHint">monatliche Fixkosten</small>
           </article>
@@ -69,6 +82,54 @@
             <strong id="carryoverCount">0</strong>
             <small id="carryoverHint">offene Beträge im nächsten Monat</small>
           </article>
+          <article class="insight-card">
+            <span>Größte Ausgabe</span>
+            <strong id="biggestExpenseValue">0,00 €</strong>
+            <small id="biggestExpenseHint">Noch keine Ausgaben</small>
+          </article>
+          <article class="insight-card">
+            <span>Wichtigster Insight</span>
+            <strong id="topSpendValue">0,00 €</strong>
+            <small id="topSpendHint">Noch keine Kategorie</small>
+          </article>
+          <article class="insight-card">
+            <span>Nächste Zahlung</span>
+            <strong id="nextPaymentValue">0,00 €</strong>
+            <small id="nextPaymentHint">Keine geplanten Zahlungen</small>
+          </article>
+          <article class="insight-card">
+            <span>Diese Woche</span>
+            <strong id="weekSpendValue">0,00 €</strong>
+            <small id="weekSpendHint">Ausgaben der laufenden Woche</small>
+          </article>
+        </section>
+        <section class="quick-add-card panel">
+          <div>
+            <h2>Schnell erfassen</h2>
+            <p>Beispiel: <b>12,50 Kaffee Lebensmittel</b></p>
+          </div>
+          <fieldset class="quick-add-type" aria-label="Typ für Schnell erfassen">
+            <label>
+              <input type="radio" name="quickAddType" value="expense" checked />
+              <span>Ausgabe</span>
+            </label>
+            <label>
+              <input type="radio" name="quickAddType" value="income" />
+              <span>Einnahme</span>
+            </label>
+            <label>
+              <input type="radio" name="quickAddType" value="debt" />
+              <span>Schuld</span>
+            </label>
+            <label>
+              <input type="radio" name="quickAddType" value="asset" />
+              <span>Vermögen</span>
+            </label>
+          </fieldset>
+          <div class="quick-add-controls">
+            <input id="quickAddInput" type="text" inputmode="decimal" autocomplete="off" placeholder="12,50 Kaffee Lebensmittel" />
+            <button id="quickAddButton" class="submit-button compact-submit" type="button">Hinzufügen</button>
+          </div>
         </section>
         <section id="summaryBreakdown" class="panel summary-breakdown" hidden>
           <div class="panel-title">
@@ -101,6 +162,21 @@
             <span>Vermögen <b id="totalAssetValue">0,00 €</b></span>
             <span>Schulden <b id="accountsDebtValue">0,00 €</b></span>
           </div>
+        </section>
+        <section class="panel bank-connect-card">
+          <div>
+            <span class="section-kicker">Bankverbindung</span>
+            <h2>Bank sicher verbinden</h2>
+            <p id="bankStatusText">Noch nicht verbunden. CSV-Import bleibt die sichere Zwischenlösung.</p>
+          </div>
+          <button id="bankConnectButton" class="submit-button compact-submit" type="button">Bank verbinden</button>
+        </section>
+        <section class="panel account-type-panel">
+          <div class="panel-title">
+            <h2>Geldstruktur</h2>
+            <span class="mini-pill">Konten · Vermögen · Schulden</span>
+          </div>
+          <div id="accountStructureList" class="account-structure-list"></div>
         </section>
         <section class="panel people-panel">
           <div class="panel-title">
@@ -157,7 +233,9 @@
               <option value="all">Alle</option>
               <option value="expense">Ausgaben</option>
               <option value="income">Einnahmen</option>
-              <option value="recurring">Monatlich</option>
+              <option value="recurring">Wiederkehrend</option>
+              <option value="open">Offen</option>
+              <option value="paid">Bezahlt</option>
             </select>
             <button id="entryMenuButton" class="secondary-button list-menu-button" type="button" title="Menü" aria-label="Menü">☰</button>
             <div id="entryMenuPanel" class="list-actions entry-menu-panel" hidden>
@@ -166,15 +244,12 @@
           </div>
           <div id="entryList" class="entry-list"></div>
         </section>
-      </section>
-
-      <section class="app-view" data-view="calendar" hidden>
-        <section class="panel calendar-panel">
+        <section class="panel calendar-panel compact-calendar-panel">
           <div class="panel-title calendar-title-row">
             <button id="calendarPrevButton" class="icon-button" type="button" aria-label="Vorheriger Monat">‹</button>
             <div>
-              <h2 id="calendarTitle">Kalender</h2>
-              <span id="calendarSubtitle">Monatsansicht</span>
+              <h2 id="calendarTitle">Kalender im Monat</h2>
+              <span id="calendarSubtitle">Nur Tage mit Geldbewegung werden hervorgehoben</span>
             </div>
             <button id="calendarNextButton" class="icon-button" type="button" aria-label="Nächster Monat">›</button>
           </div>
@@ -191,7 +266,7 @@
       </section>
 
       <section class="app-view" data-view="reports" hidden>
-        <section class="insights-grid reports-grid" aria-label="Reports">
+        <section class="insights-grid reports-grid" aria-label="Analyse">
           <article class="insight-card">
             <span>Top-Kategorien</span>
             <div id="topCategoryList" class="insight-list"></div>
@@ -210,6 +285,23 @@
             <strong id="reportsNetWorthValue">0,00 €</strong>
             <small id="reportsNetWorthHint">Vermögen minus Schulden</small>
           </article>
+          <article class="insight-card">
+            <span>Optimierung</span>
+            <div id="reportsOptimizationList" class="insight-list"></div>
+          </article>
+          <article class="insight-card">
+            <span>Häufige Ausgaben</span>
+            <div id="reportsFrequentList" class="insight-list"></div>
+          </article>
+          <article class="insight-card">
+            <span>Größte Zahlungen</span>
+            <div id="reportsLargestList" class="insight-list"></div>
+          </article>
+          <article class="insight-card">
+            <span>Offene Schulden</span>
+            <strong id="reportsDebtValue">0,00 €</strong>
+            <small id="reportsDebtHint">Verbindlichkeiten</small>
+          </article>
         </section>
         <section class="panel">
           <div class="panel-title">
@@ -220,13 +312,35 @@
         </section>
       </section>
 
-      <section class="utility-actions" aria-label="Datensicherung">
-        <button id="exportButton" class="secondary-button backup-button" type="button">Daten sichern</button>
-        <label class="secondary-button import-label backup-button">
-          Daten wiederherstellen
-          <input id="importInput" type="file" accept=".xlsx,.json,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv" />
-        </label>
-        <button id="clearButton" class="secondary-button danger-button quick-clear-button" type="button" title="Alles löschen (nur ausgewählte Person oder Gesamt)">Alles löschen</button>
+      <section class="app-view" data-view="more" hidden>
+        <section class="panel more-hero">
+          <div>
+            <span class="section-kicker">Mehr</span>
+            <h2>Werkzeuge & Sicherheit</h2>
+            <p>Backup, Import, Bankverbindung und App-Informationen bleiben bewusst gebündelt.</p>
+          </div>
+          <button id="moreSettingsButton" class="secondary-button" type="button">Einstellungen öffnen</button>
+        </section>
+        <section class="panel bank-connect-card">
+          <div>
+            <span class="section-kicker">Vorbereitet</span>
+            <h2>Bank verbinden</h2>
+            <p>Noch nicht verbunden. Eine echte Verbindung braucht später ein sicheres Backend oder Serverless API.</p>
+          </div>
+          <button id="moreBankConnectButton" class="submit-button compact-submit" type="button">Info anzeigen</button>
+        </section>
+        <section class="panel provider-panel">
+          <div class="panel-title">
+            <h2>Provider-Vorbereitung</h2>
+            <span class="mini-pill">keine API-Calls</span>
+          </div>
+          <div id="bankProviderList" class="provider-list"></div>
+        </section>
+        <section class="panel more-actions">
+          <button class="secondary-button" type="button" data-more-action="category">Budget/Kategorie verwalten</button>
+          <button class="secondary-button" type="button" data-more-action="export">Daten sichern</button>
+          <button class="secondary-button" type="button" data-more-action="settings">Datenschutz & Speicher</button>
+        </section>
       </section>
     </main>
 
@@ -242,12 +356,12 @@
     </div>
 
     <nav class="bottom-nav" aria-label="Hauptnavigation">
-      <button class="bottom-nav-item active" type="button" data-view-target="overview"><span>□</span>Overview</button>
-      <button class="bottom-nav-item" type="button" data-view-target="accounts"><span>▣</span>Accounts</button>
-      <button class="bottom-nav-item" type="button" data-view-target="budgets"><span>◔</span>Budgets</button>
-      <button class="bottom-nav-item" type="button" data-view-target="transactions"><span>☷</span>Transactions</button>
-      <button class="bottom-nav-item" type="button" data-view-target="calendar"><span>◫</span>Calendar</button>
-      <button class="bottom-nav-item" type="button" data-view-target="reports"><span>◕</span>Reports</button>
+      <button class="bottom-nav-item active" type="button" data-view-target="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11.5 12 5l7 6.5V20a1 1 0 0 1-1 1h-4.2v-5.2h-3.6V21H6a1 1 0 0 1-1-1v-8.5Z"></path></svg>Start</button>
+      <button class="bottom-nav-item" type="button" data-view-target="accounts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16v10.8A1.7 1.7 0 0 1 18.3 20H5.7A1.7 1.7 0 0 1 4 18.3V7.5Z"></path><path d="M7 5h10a2 2 0 0 1 2 2.5H5A2 2 0 0 1 7 5Z"></path><path d="M15.5 13H19v3h-3.5a1.5 1.5 0 0 1 0-3Z"></path></svg>Geld</button>
+      <button class="bottom-nav-item" type="button" data-view-target="budgets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18.5V8.8a6 6 0 0 1 12 0v9.7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 18.5Z"></path><path d="M8.4 10.2h7.2M9 14h6"></path></svg>Budgets</button>
+      <button class="bottom-nav-item" type="button" data-view-target="transactions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h10a2 2 0 0 1 2 2v12l-2-1-2 1-2-1-2 1-2-1-2 1V7a2 2 0 0 1 2-2Z"></path><path d="M9 9h6M9 12h6M9 15h4"></path></svg>Buchungen</button>
+      <button class="bottom-nav-item" type="button" data-view-target="reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"></path><path d="M4 20h16"></path></svg>Analyse</button>
+      <button class="bottom-nav-item" type="button" data-view-target="more"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"></path></svg>Mehr</button>
     </nav>
 
     <div class="form-templates" hidden>
@@ -425,6 +539,17 @@
             <select id="assetPersonInput"></select>
           </label>
           <label>
+            <span>Art</span>
+            <select id="assetTypeInput">
+              <option value="cash">Bargeld</option>
+              <option value="bank">Bankkonto</option>
+              <option value="savings">Sparkonto</option>
+              <option value="investment">Investment</option>
+              <option value="property">Sachwert</option>
+              <option value="other">Sonstiges</option>
+            </select>
+          </label>
+          <label>
             <span>Name</span>
             <input id="assetNameInput" autocomplete="off" maxlength="80" type="text" required />
           </label>
@@ -493,6 +618,68 @@
       </div>
     </div>
 
+    <div id="settingsModal" class="edit-modal settings-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div id="settingsModalBackdrop" class="edit-modal-backdrop"></div>
+      <div class="edit-modal-box settings-box">
+        <div class="panel-title settings-title">
+          <div>
+            <p class="eyebrow">BudgetUp</p>
+            <h2 id="settingsTitle">Einstellungen</h2>
+          </div>
+          <button id="settingsCloseButton" class="icon-button" type="button" title="Schließen" aria-label="Schließen">×</button>
+        </div>
+        <section class="settings-section">
+          <h3>Datenmanagement</h3>
+          <p>Deine Daten bleiben lokal in diesem Browser gespeichert. Exportiere regelmäßig ein Backup, bevor du größere Änderungen machst.</p>
+          <div class="utility-actions settings-actions" aria-label="Datensicherung">
+            <button id="exportButton" class="secondary-button backup-button" type="button">Daten sichern</button>
+            <label class="secondary-button import-label backup-button">
+              Daten wiederherstellen
+              <input id="importInput" type="file" accept=".xlsx,.json,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv" />
+            </label>
+            <button id="clearButton" class="secondary-button danger-button quick-clear-button" type="button" title="Alles löschen (nur ausgewählte Person oder Gesamt)">Alles löschen</button>
+          </div>
+        </section>
+        <section class="settings-section">
+          <h3>App-Information</h3>
+          <div class="settings-info-grid">
+            <span>Speicher</span><strong>lokal · budget-app-v2</strong>
+            <span>Modus</span><strong>mobile Finance PWA</strong>
+            <span>Design</span><strong>Calm Premium · hell</strong>
+          </div>
+        </section>
+        <section class="settings-section muted-settings">
+          <h3>Datenschutz</h3>
+          <p>BudgetUp sendet keine Finanzdaten an einen Server. Import, Export und Löschen passieren lokal auf deinem Gerät.</p>
+        </section>
+      </div>
+    </div>
+
+    <div id="bankInfoModal" class="edit-modal settings-modal" hidden role="dialog" aria-modal="true" aria-labelledby="bankInfoTitle">
+      <div id="bankInfoBackdrop" class="edit-modal-backdrop"></div>
+      <div class="edit-modal-box settings-box">
+        <div class="panel-title settings-title">
+          <div>
+            <p class="eyebrow">Sichere Architektur</p>
+            <h2 id="bankInfoTitle">Bank verbinden</h2>
+          </div>
+          <button id="bankInfoCloseButton" class="icon-button" type="button" title="Schließen" aria-label="Schließen">×</button>
+        </div>
+        <section class="settings-section">
+          <h3>Noch nicht verbunden</h3>
+          <p>BudgetUp speichert aktuell nur lokale Daten. Eine echte PSD2-/Bankverbindung darf nicht mit Secrets direkt im Browser laufen.</p>
+        </section>
+        <section class="settings-section">
+          <h3>Vorbereitete Struktur</h3>
+          <p>Geplant sind Provider wie GoCardless, Tink oder finAPI über ein sicheres Backend/Serverless API. CSV-Import bleibt bis dahin die sichere Zwischenlösung.</p>
+        </section>
+        <section class="settings-section muted-settings">
+          <h3>Datensatz</h3>
+          <p><code>bankConnections</code>: id, provider, status, lastSyncAt, consentExpiresAt, accountIds.</p>
+        </section>
+      </div>
+    </div>
+
     <div id="personContextMenu" class="context-menu" hidden role="menu">
       <button class="context-menu-item" data-action="duplicate" type="button">Person duplizieren</button>
       <button class="context-menu-item" data-action="rename" type="button">Umbenennen</button>
@@ -531,6 +718,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=78" defer></script>
+    <script src="app.js?v=82" defer></script>
   </body>
 </html>
