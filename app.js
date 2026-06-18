@@ -47,7 +47,7 @@ const state = loadState();
 const formatMoney = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 ensurePeople();
 ensureStandardCategories();
-repairCopiedAssets();
+repairCopiedItems();
 
 const elements = {
   monthInput: document.querySelector("#monthInput"),
@@ -574,38 +574,107 @@ function closeEntryMenu() {
   elements.entryMenuPanel.hidden = true;
 }
 
-function repairCopiedAssets() {
-  const originalsBySignature = new Map();
+function repairCopiedItems() {
   let changed = false;
+  changed = markDuplicateLineage(state.entries, entrySignature) || changed;
+  changed = markDuplicateLineage(state.debts, debtSignature) || changed;
+  changed = markDuplicateLineage(state.assets, assetSignature) || changed;
+  changed = removeOrphanDuplicates(state.entries) || changed;
+  changed = removeOrphanDuplicates(state.debts) || changed;
+  changed = removeOrphanDuplicates(state.assets) || changed;
+  if (changed) persist();
+}
 
-  state.assets.forEach((asset) => {
-    const signature = assetSignature(asset);
+function markDuplicateLineage(items, signatureFn) {
+  const groups = new Map();
+
+  items.forEach((item) => {
+    const signature = signatureFn(item);
     if (!signature) return;
-
-    if (asset.duplicateOf) {
-      if (!originalsBySignature.has(signature)) originalsBySignature.set(signature, asset);
-      return;
-    }
-
-    const original = originalsBySignature.get(signature);
-    if (original && (original.personId || defaultPersonId()) !== (asset.personId || defaultPersonId())) {
-      asset.duplicateOf = original.duplicateOf || original.id;
-      changed = true;
-      return;
-    }
-
-    originalsBySignature.set(signature, asset);
+    if (!groups.has(signature)) groups.set(signature, []);
+    groups.get(signature).push(item);
   });
 
-  if (changed) persist();
+  let changed = false;
+  groups.forEach((group) => {
+    const referencedIds = new Set(group.map((item) => item.duplicateOf).filter(Boolean));
+    const root = group.find((item) => referencedIds.has(item.id)) || group.find((item) => !item.duplicateOf) || group[0];
+    const rootOwner = root.personId || defaultPersonId();
+    const rootId = root.duplicateOf && root.duplicateOf !== root.id ? root.duplicateOf : root.id;
+
+    group.forEach((item) => {
+      const owner = item.personId || defaultPersonId();
+      if (item.id === rootId || item.id === root.id) {
+        if (item.duplicateOf === item.id) {
+          delete item.duplicateOf;
+          changed = true;
+        }
+        return;
+      }
+      if (owner !== rootOwner && item.duplicateOf !== rootId) {
+        item.duplicateOf = rootId;
+        changed = true;
+      }
+    });
+  });
+
+  return changed;
+}
+
+function removeOrphanDuplicates(items) {
+  const ids = new Set(items.map((item) => item.id));
+  const before = items.length;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const duplicateOf = items[index].duplicateOf;
+    if (duplicateOf && !ids.has(duplicateOf)) items.splice(index, 1);
+  }
+  return items.length !== before;
+}
+
+function lineageId(item) {
+  return item?.duplicateOf || item?.id || "";
+}
+
+function findItemById(id) {
+  return [...state.entries, ...state.debts, ...state.assets].find((item) => item.id === id);
+}
+
+function sameLineage(item, id) {
+  if (!id) return false;
+  const target = findItemById(id);
+  const targetLineage = target ? lineageId(target) : id;
+  return item.id === targetLineage || item.duplicateOf === targetLineage || lineageId(item) === targetLineage;
+}
+
+function entrySignature(entry) {
+  const type = entry.type || "expense";
+  const date = entry.date || "";
+  const category = String(entry.category || "").trim().toLowerCase();
+  const description = String(entry.description || "").trim().toLowerCase();
+  const amount = Number(entry.amount || 0).toFixed(2);
+  const recurring = entry.recurring ? "1" : "0";
+  const endDate = entry.endDate || "";
+  if (!description && amount === "0.00") return "";
+  return `${type}|${date}|${category}|${description}|${amount}|${recurring}|${endDate}`;
+}
+
+function debtSignature(debt) {
+  const creditor = String(debt.creditor || "").trim().toLowerCase();
+  const total = Number(debt.totalAmount || 0).toFixed(2);
+  const monthly = Number(debt.monthlyPayment || 0).toFixed(2);
+  const start = debt.startDate || "";
+  const end = debt.endDate || "";
+  if (!creditor && total === "0.00") return "";
+  return `${creditor}|${total}|${monthly}|${start}|${end}`;
 }
 
 function assetSignature(asset) {
   const name = String(asset.name || "").trim().toLowerCase();
   const note = String(asset.note || "").trim().toLowerCase();
+  const type = normalizeAssetType(asset.type || inferAssetType(asset));
   const amount = Number(asset.amount || 0).toFixed(2);
   if (!name && amount === "0.00") return "";
-  return `${name}|${amount}|${note}`;
+  return `${name}|${amount}|${note}|${type}`;
 }
 
 function getActiveContext(id = state.selectedPersonId) {
@@ -1966,10 +2035,10 @@ function editAsset(id) {
 }
 
 function deleteAsset(id) {
-  state.assets = state.assets.filter((asset) => asset.id !== id);
+  state.assets = state.assets.filter((asset) => !sameLineage(asset, id));
   persist();
   render();
-  if (activeEditContext?.kind === "asset" && activeEditContext.id === id) closeEditModal();
+  if (activeEditContext?.kind === "asset" && sameLineage(activeEditContext, id)) closeEditModal();
   showMessage("Vermögen gelöscht.");
 }
 
@@ -1985,6 +2054,7 @@ function renderSummary() {
   elements.overviewIncomeValue.textContent = formatMoney.format(summary.income);
   elements.overviewExpenseValue.textContent = formatMoney.format(summary.expense);
   elements.remainingValue.textContent = formatMoney.format(remaining);
+  elements.remainingValue.nextElementSibling.textContent = remaining >= 0 ? "Bleibt am Monatsende" : "Über Budget";
   elements.remainingValue.parentElement.classList.toggle("positive", remaining >= 0);
   elements.remainingValue.parentElement.classList.toggle("negative", remaining < 0);
   elements.totalDebtValue.textContent = formatMoney.format(totalDebt);
@@ -2419,10 +2489,10 @@ function editEntry(id) {
 }
 
 function deleteEntry(id) {
-  state.entries = state.entries.filter((entry) => entry.id !== id);
+  state.entries = state.entries.filter((entry) => !sameLineage(entry, id));
   persist();
   render();
-  if (activeEditContext?.kind === "entry" && activeEditContext.id === id) closeEditModal();
+  if (activeEditContext?.kind === "entry" && sameLineage(activeEditContext, id)) closeEditModal();
 }
 
 function editDebt(id) {
@@ -2453,10 +2523,10 @@ function editDebt(id) {
 }
 
 function deleteDebt(id) {
-  state.debts = state.debts.filter((debt) => debt.id !== id);
+  state.debts = state.debts.filter((debt) => !sameLineage(debt, id));
   persist();
   render();
-  if (activeEditContext?.kind === "debt" && activeEditContext.id === id) closeEditModal();
+  if (activeEditContext?.kind === "debt" && sameLineage(activeEditContext, id)) closeEditModal();
 }
 
 function deleteActiveEditItem() {
@@ -2550,7 +2620,7 @@ function importBackup(event) {
       }
       persist();
       ensurePeople();
-      repairCopiedAssets();
+      repairCopiedItems();
       render();
     } catch (error) {
       showMessage(`Import nicht erkannt: ${error.message || "unbekannter Fehler"}`);
@@ -3838,6 +3908,18 @@ function createId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function deleteEntryLineageForTest(id) {
+  state.entries = state.entries.filter((entry) => !sameLineage(entry, id));
+}
+
+function deleteDebtLineageForTest(id) {
+  state.debts = state.debts.filter((debt) => !sameLineage(debt, id));
+}
+
+function deleteAssetLineageForTest(id) {
+  state.assets = state.assets.filter((asset) => !sameLineage(asset, id));
+}
+
 function runBudgetUpSelfTest() {
   const snapshot = clone({
     categories: state.categories,
@@ -3916,6 +3998,16 @@ function runBudgetUpSelfTest() {
     assert("QuickAdd Einnahme Parser", quickIncome?.amount === 200 && quickIncome.category === "Einkommen" && quickIncome.description === "Upwork", JSON.stringify(quickIncome));
     assert("QuickAdd Schuld Parser", quickDebt?.amount === 500 && quickDebt.monthlyPayment === 50 && quickDebt.description === "Targobank Kredit", JSON.stringify(quickDebt));
     assert("QuickAdd Vermögen Parser", quickAsset?.amount === 300 && quickAsset.description === "Bargeld", JSON.stringify(quickAsset));
+
+    state.entries.push({ ...state.entries[1], id: "e-expense-copy", personId: "p2-test", duplicateOf: "e-expense" });
+    state.debts.push({ ...state.debts[0], id: "d-open-copy", personId: "p2-test", duplicateOf: "d-open" });
+    state.assets.push({ ...state.assets[0], id: "a-cash-copy", personId: "p2-test", duplicateOf: "a-cash" });
+    const familyBeforeDelete = calculateMonthSummary("2026-06", getActiveContext("all"));
+    assert("Gesamt zählt Kopien nicht doppelt", familyBeforeDelete.entryExpense === 1174 && familyBeforeDelete.totalDebt === 350 && familyBeforeDelete.totalAssets === 1199, JSON.stringify(familyBeforeDelete));
+    deleteEntryLineageForTest("e-expense-copy");
+    deleteDebtLineageForTest("d-open-copy");
+    deleteAssetLineageForTest("a-cash-copy");
+    assert("Löschen entfernt Original und Kopien", !state.entries.some((entry) => sameLineage(entry, "e-expense")) && !state.debts.some((debt) => sameLineage(debt, "d-open")) && !state.assets.some((asset) => sameLineage(asset, "a-cash")), "lineage should be gone");
   } finally {
     state.categories = snapshot.categories;
     state.entries = snapshot.entries;
@@ -3936,3 +4028,14 @@ function runBudgetUpSelfTest() {
 }
 
 window.runBudgetUpSelfTest = runBudgetUpSelfTest;
+
+if (new URLSearchParams(window.location.search).has("selftest")) {
+  window.addEventListener("load", () => {
+    const result = runBudgetUpSelfTest();
+    const marker = document.createElement("meta");
+    marker.id = "budgetup-self-test";
+    marker.dataset.status = result.failed ? "failed" : "passed";
+    marker.dataset.result = JSON.stringify(result);
+    document.head.append(marker);
+  }, { once: true });
+}
