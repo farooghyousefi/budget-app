@@ -3003,6 +3003,26 @@ label span {
   text-transform: uppercase;
 }
 
+.entry-day-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.entry-day-total span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
 .entry-row {
   border-left-width: 0;
   position: relative;

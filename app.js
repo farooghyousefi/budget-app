@@ -1781,11 +1781,14 @@ function groupedTransactionHtml(entries, month) {
   });
   return [...groups.entries()].map(([date, rows]) => {
     const net = rows.reduce((total, entry) => total + (entry.type === "income" ? Number(entry.amount || 0) : -Number(entry.amount || 0)), 0);
+    const dailyTotal = rows.length > 1
+      ? `<strong class="entry-day-total ${net >= 0 ? "positive-text" : "negative-text"}"><span>Tagesbilanz</span>${net >= 0 ? "+" : ""}${formatMoney.format(net)}</strong>`
+      : "";
     return `
       <section class="entry-date-group">
         <header class="entry-date-group-title">
           <span>${formatDateFull(date)}</span>
-          <strong class="${net >= 0 ? "positive-text" : "negative-text"}">${net >= 0 ? "+" : ""}${formatMoney.format(net)}</strong>
+          ${dailyTotal}
         </header>
         ${rows.map((entry) => transactionRowHtml(entry, month)).join("")}
       </section>
