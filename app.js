@@ -686,8 +686,13 @@ function getActiveContext(id = state.selectedPersonId) {
 }
 
 function contextMatchesItem(item, context = getActiveContext()) {
+  // Kopien bleiben in ihrer Einzelperson sichtbar, werden in Gesamt aber nicht erneut addiert.
   if (context.isAll) return !item.duplicateOf;
   return (item.personId || defaultPersonId()) === context.id;
+}
+
+function preserveCopyTracking(nextItem, existingItem) {
+  return existingItem?.duplicateOf ? { ...nextItem, duplicateOf: existingItem.duplicateOf } : nextItem;
 }
 
 function getEntriesForMonth(month, context = getActiveContext()) {
@@ -1077,7 +1082,7 @@ function saveEntry(event) {
 
   const existingIndex = state.entries.findIndex((item) => item.id === entry.id);
   if (existingIndex >= 0) {
-    state.entries[existingIndex] = entry;
+    state.entries[existingIndex] = preserveCopyTracking(entry, state.entries[existingIndex]);
   } else {
     state.entries.push(entry);
   }
@@ -1211,8 +1216,12 @@ function defaultQuickAddDescription(type, category) {
 }
 
 function quickAddDate() {
-  const today = localDateString(new Date());
-  return today.slice(0, 7) === elements.monthInput.value ? today : monthToDate(elements.monthInput.value);
+  return selectedCalendarDate();
+}
+
+function selectedCalendarDate() {
+  const month = elements.monthInput.value || currentLocalMonth();
+  return selectedCalendarDay?.slice(0, 7) === month ? selectedCalendarDay : monthToDate(month);
 }
 
 function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
@@ -1222,6 +1231,8 @@ function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
   elements.debtId.value = "";
   elements.typeInput.value = nextType;
   elements.paymentInput.value = "Karte";
+  elements.dateInput.value = selectedCalendarDate();
+  elements.debtStartInput.value = selectedCalendarDate();
   elements.recurringInput.checked = false;
   elements.entryEndInput.value = "";
   elements.entryStatusInput.value = "open";
@@ -1298,7 +1309,7 @@ function saveDebtFromMainForm() {
 
   const existingIndex = state.debts.findIndex((item) => item.id === debt.id);
   if (existingIndex >= 0) {
-    state.debts[existingIndex] = debt;
+    state.debts[existingIndex] = preserveCopyTracking(debt, state.debts[existingIndex]);
   } else {
     state.debts.push(debt);
   }
@@ -3938,12 +3949,16 @@ function runBudgetUpSelfTest() {
   const assert = (name, condition, detail = "") => {
     results.push({ name, pass: Boolean(condition), detail });
   };
+  const closeEnough = (actual, expected, tolerance = 0.01) => Math.abs(actual - expected) <= tolerance;
 
   try {
     state.people = [
       { id: "shared-test", name: "Gemeinsam" },
       { id: "p1-test", name: "Test Person" },
       { id: "p2-test", name: "Andere Person" },
+      { id: "simple-test", name: "Einfacher Fall" },
+      { id: "case-test", name: "Faruk" },
+      { id: "case-copy", name: "Faruk Kopie" },
     ];
     state.selectedPersonId = "p1-test";
     state.categories = [
@@ -4002,11 +4017,39 @@ function runBudgetUpSelfTest() {
     assert("QuickAdd Schuld Parser", quickDebt?.amount === 500 && quickDebt.monthlyPayment === 50 && quickDebt.description === "Targobank Kredit", JSON.stringify(quickDebt));
     assert("QuickAdd Vermögen Parser", quickAsset?.amount === 300 && quickAsset.description === "Bargeld", JSON.stringify(quickAsset));
 
+    state.entries.push(
+      { id: "simple-income", personId: "simple-test", type: "income", date: "2026-05-01", category: "Einkommen", description: "Gehalt", payment: "Überweisung", amount: 2000, recurring: false, endDate: "", status: "open", updatedAt: 9 },
+      { id: "simple-expense", personId: "simple-test", type: "expense", date: "2026-05-02", category: "Wohnen", description: "Miete", payment: "Karte", amount: 500, recurring: false, endDate: "", status: "open", updatedAt: 10 },
+      { id: "case-income", personId: "case-test", type: "income", date: "2026-05-01", category: "Einkommen", description: "Gehalt Faruk", payment: "Überweisung", amount: 2000, recurring: false, endDate: "", status: "open", updatedAt: 11 },
+      { id: "case-expense", personId: "case-test", type: "expense", date: "2026-05-01", category: "Wohnen", description: "Miete Faruk", payment: "Karte", amount: 500, recurring: false, endDate: "", status: "open", updatedAt: 11 },
+      { id: "case-o2", personId: "case-test", type: "expense", date: "2026-05-21", category: "Abos", description: "O2 Tarif", payment: "Lastschrift", amount: 27.99, recurring: true, endDate: "2028-01-21", status: "open", updatedAt: 12 },
+      { id: "case-income-copy", personId: "case-copy", type: "income", date: "2026-05-01", category: "Einkommen", description: "Gehalt Faruk", payment: "Überweisung", amount: 2000, recurring: false, endDate: "", status: "open", updatedAt: 13, duplicateOf: "case-income" },
+      { id: "case-expense-copy", personId: "case-copy", type: "expense", date: "2026-05-01", category: "Wohnen", description: "Miete Faruk", payment: "Karte", amount: 500, recurring: false, endDate: "", status: "open", updatedAt: 14, duplicateOf: "case-expense" }
+    );
+    state.debts.push({ id: "case-debt", personId: "case-test", creditor: "Test Bank", totalAmount: 1000, paidSoFar: 0, monthlyPayment: 100, startDate: "2026-05-01", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" });
+    state.assets.push(
+      { id: "case-asset", personId: "case-test", name: "Depot", amount: 10000, note: "" },
+      { id: "case-asset-copy", personId: "case-copy", name: "Depot", amount: 10000, note: "", duplicateOf: "case-asset" }
+    );
+
+    const simpleMay = calculateMonthSummary("2026-05", getActiveContext("simple-test"));
+    const caseContext = getActiveContext("case-test");
+    const caseJune = calculateMonthSummary("2026-06", caseContext);
+    const caseApril = calculateMonthSummary("2026-04", caseContext);
+    const caseFebruary2028 = calculateMonthSummary("2028-02", caseContext);
+    const caseMayDay = getCalendarDaySummary("2026-05-01", caseContext);
+    assert("Fall A Einnahmen/Ausgaben/Saldo", simpleMay.income === 2000 && simpleMay.entryExpense === 500 && simpleMay.balance === 1500, JSON.stringify(simpleMay));
+    assert("Fall B wiederkehrend startet und endet korrekt", closeEnough(caseJune.entryExpense, 27.99) && caseApril.entryExpense === 0 && caseFebruary2028.entryExpense === 0, JSON.stringify({ caseJune, caseApril, caseFebruary2028 }));
+    assert("Fall C Tagesbilanz ohne Doppelzählung", caseMayDay.income === 2000 && caseMayDay.entryExpense === 500 && caseMayDay.debtExpense === 100 && caseMayDay.net === 1400 && caseMayDay.items.length === 3, JSON.stringify(caseMayDay));
+
     state.entries.push({ ...state.entries[1], id: "e-expense-copy", personId: "p2-test", duplicateOf: "e-expense" });
     state.debts.push({ ...state.debts[0], id: "d-open-copy", personId: "p2-test", duplicateOf: "d-open" });
     state.assets.push({ ...state.assets[0], id: "a-cash-copy", personId: "p2-test", duplicateOf: "a-cash" });
     const familyBeforeDelete = calculateMonthSummary("2026-06", getActiveContext("all"));
-    assert("Gesamt zählt Kopien nicht doppelt", familyBeforeDelete.entryExpense === 1174 && familyBeforeDelete.totalDebt === 350 && familyBeforeDelete.totalAssets === 1199, JSON.stringify(familyBeforeDelete));
+    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && familyBeforeDelete.totalDebt === 1150 && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
+    const editedCopy = preserveCopyTracking({ ...state.entries.find((entry) => entry.id === "case-income-copy"), amount: 2100 }, state.entries.find((entry) => entry.id === "case-income-copy"));
+    assert("Bearbeiten bewahrt duplicateOf", editedCopy.duplicateOf === "case-income", JSON.stringify(editedCopy));
+    assert("Fall D/E Kopien bleiben aus Gesamt heraus", calculateMonthSummary("2026-05", getActiveContext("case-copy")).income === 2000 && calculateMonthSummary("2026-05", getActiveContext("all")).totalAssets === 11199, JSON.stringify(calculateMonthSummary("2026-05", getActiveContext("all"))));
     deleteEntryLineageForTest("e-expense-copy");
     deleteDebtLineageForTest("d-open-copy");
     deleteAssetLineageForTest("a-cash-copy");

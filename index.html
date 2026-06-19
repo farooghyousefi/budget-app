@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=85" />
+    <link rel="manifest" href="manifest.webmanifest?v=86" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=85" />
+    <link rel="stylesheet" href="styles.css?v=86" />
   </head>
   <body>
     <main class="app-shell">
@@ -34,10 +34,23 @@
           <span>Kontext</span>
           <select id="contextSelect" aria-label="Aktiven Kontext auswählen"></select>
         </label>
-        <label class="month-picker">
+        <label class="month-picker month-picker-quiet" aria-hidden="true">
           <span>Monat</span>
-          <input id="monthInput" type="month" />
+          <input id="monthInput" type="month" tabindex="-1" />
         </label>
+      </section>
+
+      <section class="panel calendar-panel calendar-head-panel" aria-label="Monatskalender und Tagesauswahl">
+        <div class="panel-title calendar-title-row">
+          <button id="calendarPrevButton" class="icon-button" type="button" aria-label="Vorheriger Monat">‹</button>
+          <div>
+            <h2 id="calendarTitle">Kalender im Monat</h2>
+            <span id="calendarSubtitle">Nur Tage mit Geldbewegung werden hervorgehoben</span>
+          </div>
+          <button id="calendarNextButton" class="icon-button" type="button" aria-label="Nächster Monat">›</button>
+        </div>
+        <button id="calendarTodayButton" class="secondary-button calendar-today-button" type="button">Heute</button>
+        <div id="calendarGrid" class="calendar-grid"></div>
       </section>
 
       <p id="formMessage" class="form-message app-toast" role="status"></p>
@@ -243,18 +256,6 @@
             </div>
           </div>
           <div id="entryList" class="entry-list"></div>
-        </section>
-        <section class="panel calendar-panel compact-calendar-panel">
-          <div class="panel-title calendar-title-row">
-            <button id="calendarPrevButton" class="icon-button" type="button" aria-label="Vorheriger Monat">‹</button>
-            <div>
-              <h2 id="calendarTitle">Kalender im Monat</h2>
-              <span id="calendarSubtitle">Nur Tage mit Geldbewegung werden hervorgehoben</span>
-            </div>
-            <button id="calendarNextButton" class="icon-button" type="button" aria-label="Nächster Monat">›</button>
-          </div>
-          <button id="calendarTodayButton" class="secondary-button calendar-today-button" type="button">Heute</button>
-          <div id="calendarGrid" class="calendar-grid"></div>
         </section>
         <section class="panel">
           <div class="panel-title">
@@ -718,6 +719,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=85" defer></script>
+    <script src="app.js?v=86" defer></script>
   </body>
 </html>
