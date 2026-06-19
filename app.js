@@ -16,6 +16,14 @@ const STANDARD_CATEGORY_NAMES = [
   "Sonstiges",
 ];
 const ENTRY_STATUSES = ["open", "paid", "ended"];
+const RECURRENCE_TYPES = ["none", "daily", "weekly", "monthly", "yearly"];
+const RECURRENCE_LABELS = {
+  none: "keine",
+  daily: "täglich",
+  weekly: "wöchentlich",
+  monthly: "monatlich",
+  yearly: "jährlich",
+};
 const BANK_PROVIDERS = [
   { id: "gocardless", name: "GoCardless", status: "geplant" },
   { id: "tink", name: "Tink", status: "geplant" },
@@ -105,7 +113,7 @@ const elements = {
   amountInput: document.querySelector("#amountInput"),
   descriptionInput: document.querySelector("#descriptionInput"),
   paymentInput: document.querySelector("#paymentInput"),
-  recurringInput: document.querySelector("#recurringInput"),
+  recurrenceInput: document.querySelector("#recurrenceInput"),
   entryEndInput: document.querySelector("#entryEndInput"),
   entryStatusInput: document.querySelector("#entryStatusInput"),
   resetFormButton: document.querySelector("#resetFormButton"),
@@ -301,7 +309,7 @@ elements.personNameInput.addEventListener("keydown", (event) => {
   }
 });
 elements.typeInput.addEventListener("change", syncFormMode);
-elements.recurringInput.addEventListener("change", syncRecurringFields);
+elements.recurrenceInput.addEventListener("change", syncRecurringFields);
 elements.categoryInput.addEventListener("change", () => {
   if (elements.categoryInput.value) elements.customCategoryInput.value = "";
 });
@@ -652,7 +660,7 @@ function entrySignature(entry) {
   const category = String(entry.category || "").trim().toLowerCase();
   const description = String(entry.description || "").trim().toLowerCase();
   const amount = Number(entry.amount || 0).toFixed(2);
-  const recurring = entry.recurring ? "1" : "0";
+  const recurring = entryRecurrence(entry);
   const endDate = entry.endDate || "";
   if (!description && amount === "0.00") return "";
   return `${type}|${date}|${category}|${description}|${amount}|${recurring}|${endDate}`;
@@ -691,25 +699,69 @@ function contextMatchesItem(item, context = getActiveContext()) {
   return (item.personId || defaultPersonId()) === context.id;
 }
 
+function shouldIncludeEntryInView(entry, context = getActiveContext(), monthEntries = []) {
+  if (!context.isAll) return (entry.personId || defaultPersonId()) === context.id;
+  if (entry.duplicateOf) return false;
+  return !isLikelyDuplicateAggregateEntry(entry, monthEntries);
+}
+
+function shouldIncludeItemInView(item, context = getActiveContext()) {
+  return contextMatchesItem(item, context);
+}
+
+function isLikelyDuplicateAggregateEntry(entry, monthEntries) {
+  const ownerId = entry.personId || defaultPersonId();
+  if (!isAggregatePersonId(ownerId)) return false;
+  const key = comparableEntryKey(entry);
+  return monthEntries.some((candidate) => {
+    if (candidate === entry || candidate.duplicateOf) return false;
+    const candidateOwner = candidate.personId || defaultPersonId();
+    return !isAggregatePersonId(candidateOwner) && comparableEntryKey(candidate) === key;
+  });
+}
+
+function isAggregatePersonId(id) {
+  const person = state.people.find((item) => item.id === id);
+  const name = String(person?.name || "").trim().toLowerCase();
+  return !id || id === defaultPersonId() || ["gesamt", "gemeinsam", "alle"].includes(name);
+}
+
+function comparableEntryKey(entry) {
+  return [
+    entry.type || "expense",
+    entryOccurrenceDate(entry, entry.occurrenceDate?.slice(0, 7) || entry.date?.slice(0, 7) || elements.monthInput.value),
+    normalizeComparableText(entry.category),
+    normalizeComparableText(entry.description || entry.category),
+  ].join("|");
+}
+
+function normalizeComparableText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
 function preserveCopyTracking(nextItem, existingItem) {
   return existingItem?.duplicateOf ? { ...nextItem, duplicateOf: existingItem.duplicateOf } : nextItem;
 }
 
 function getEntriesForMonth(month, context = getActiveContext()) {
-  return state.entries
-    .filter((entry) => isEntryActiveInMonth(entry, month))
-    .filter((entry) => contextMatchesItem(entry, context));
+  const monthEntries = state.entries.flatMap((entry) => expandEntryOccurrences(entry, month));
+  return monthEntries.filter((entry) => shouldIncludeEntryInView(entry, context, monthEntries));
 }
 
 function getDebtsForMonth(month, context = getActiveContext(), { activeOnly = false, visibleOnly = true } = {}) {
   return state.debts
-    .filter((debt) => contextMatchesItem(debt, context))
+    .filter((debt) => shouldIncludeItemInView(debt, context))
     .filter((debt) => !visibleOnly || isDebtVisibleInMonth(debt, month))
     .filter((debt) => !activeOnly || isDebtActiveInMonth(debt, month));
 }
 
 function getAssetsForContext(context = getActiveContext()) {
-  return state.assets.filter((asset) => contextMatchesItem(asset, context));
+  return state.assets.filter((asset) => shouldIncludeItemInView(asset, context));
 }
 
 function getBankConnections() {
@@ -761,7 +813,7 @@ function calculateMonthSummary(month, context = getActiveContext()) {
 function calculateInsightSummary(month, context = getActiveContext()) {
   const entries = getEntriesForMonth(month, context);
   const expenses = entries.filter((entry) => entry.type === "expense");
-  const recurringExpenses = expenses.filter((entry) => entry.recurring);
+  const recurringExpenses = expenses.filter(isEntryRecurring);
   const byCategory = totalsBy(expenses, (entry) => entry.category || "Sonstiges");
   const byDescription = totalsBy(expenses, (entry) => entry.description || entry.category || "Ausgabe");
   const topCategory = topMapEntry(byCategory);
@@ -818,7 +870,7 @@ function getCalendarDaySummary(date, context = getActiveContext()) {
     debtExpense,
     expense,
     net: income - expense,
-    recurring: entries.some((entry) => entry.recurring),
+    recurring: entries.some(isEntryRecurring),
   };
 }
 
@@ -957,7 +1009,7 @@ function openTypedForm(type) {
 }
 
 function targetPersonIdForNewItem() {
-  return state.selectedPersonId === "all" ? defaultPersonId() : state.selectedPersonId;
+  return state.selectedPersonId === "all" ? (visiblePeople()[0]?.id || defaultPersonId()) : state.selectedPersonId;
 }
 
 function isModalOpenFor(key) {
@@ -1058,7 +1110,8 @@ function saveEntry(event) {
     setFieldError(elements.amountInput, "Bitte Betrag eingeben.");
     return;
   }
-  if (elements.recurringInput.checked && elements.entryEndInput.value && dateToMonthNumber(elements.entryEndInput.value) < dateToMonthNumber(elements.dateInput.value || monthToDate(elements.monthInput.value))) {
+  const recurrence = selectedRecurrence();
+  if (recurrence !== "none" && elements.entryEndInput.value && compareDates(elements.entryEndInput.value, elements.dateInput.value || monthToDate(elements.monthInput.value)) < 0) {
     setFieldError(elements.entryEndInput, "Enddatum muss nach dem Startdatum liegen.");
     return;
   }
@@ -1074,8 +1127,9 @@ function saveEntry(event) {
     description: elements.descriptionInput.value.trim() || (elements.typeInput.value === "income" ? "Einnahme" : "Ausgabe"),
     payment: elements.paymentInput.value,
     amount,
-    recurring: elements.recurringInput.checked,
-    endDate: elements.recurringInput.checked ? elements.entryEndInput.value : "",
+    recurrence,
+    recurring: recurrence !== "none",
+    endDate: recurrence !== "none" ? elements.entryEndInput.value : "",
     status: normalizeStatus(elements.entryStatusInput.value),
     updatedAt: Date.now(),
   };
@@ -1153,6 +1207,7 @@ function saveQuickAdd() {
       description: parsed.description,
       payment: "Karte",
       amount: parsed.amount,
+      recurrence: "none",
       recurring: false,
       endDate: "",
       status: "open",
@@ -1233,7 +1288,7 @@ function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
   elements.paymentInput.value = "Karte";
   elements.dateInput.value = selectedCalendarDate();
   elements.debtStartInput.value = selectedCalendarDate();
-  elements.recurringInput.checked = false;
+  elements.recurrenceInput.value = "none";
   elements.entryEndInput.value = "";
   elements.entryStatusInput.value = "open";
   elements.customCategoryInput.value = "";
@@ -1377,7 +1432,8 @@ function fillContextSelect() {
 
 function fillPersonSelect() {
   const existing = elements.personInput.value;
-  const options = [{ id: defaultPersonId(), name: "Gesamt" }, ...visiblePeople()];
+  const people = visiblePeople();
+  const options = people.length ? people : [{ id: defaultPersonId(), name: "Gemeinsam" }];
   elements.personInput.innerHTML = options
     .map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`)
     .join("");
@@ -1609,7 +1665,7 @@ function syncFormMode() {
 
 function syncRecurringFields() {
   if (!elements.entryEndInput) return;
-  const recurring = elements.recurringInput.checked;
+  const recurring = selectedRecurrence() !== "none";
   elements.entryEndInput.disabled = !recurring;
   elements.entryEndInput.closest("label")?.classList.toggle("muted-field", !recurring);
   if (!recurring) elements.entryEndInput.value = "";
@@ -1756,7 +1812,7 @@ function renderEntries() {
   const entries = getEntriesForMonth(month)
     .filter((entry) => {
       if (filter === "all") return true;
-      if (filter === "recurring") return entry.recurring;
+      if (filter === "recurring") return isEntryRecurring(entry);
       if (filter === "open" || filter === "paid") return normalizeStatus(entry.status) === filter;
       return entry.type === filter;
     })
@@ -2101,11 +2157,11 @@ function renderInsights(month, summary) {
     : `<p class="empty-state compact-empty">Keine Ausgaben in diesem Monat</p>`;
 
   const recurringRows = monthEntries
-    .filter((entry) => entry.recurring)
+    .filter(isEntryRecurring)
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
     .slice(0, 3);
   const recurringTotal = monthEntries
-    .filter((entry) => entry.recurring && entry.type === "expense")
+    .filter((entry) => isEntryRecurring(entry) && entry.type === "expense")
     .reduce((total, entry) => total + Number(entry.amount || 0), 0);
   elements.overviewRecurringValue.textContent = formatMoney.format(recurringTotal);
   elements.overviewRecurringHint.textContent = recurringRows.length
@@ -2232,8 +2288,7 @@ function dailyTotals(date) {
 
 function calendarItemsForDate(date, context = getActiveContext()) {
   const month = date.slice(0, 7);
-  const entries = entriesForDate(date)
-    .filter((entry) => contextMatchesItem(entry, context))
+  const entries = entriesForDate(date, context)
     .map((entry) => ({ ...entry, kind: "entry" }));
   const debtItems = activeDebts(month)
     .filter((debt) => contextMatchesItem(debt, context))
@@ -2271,12 +2326,10 @@ function calendarDebtRowHtml(item) {
   `;
 }
 
-function entriesForDate(date) {
+function entriesForDate(date, context = getActiveContext()) {
   const month = date.slice(0, 7);
-  return state.entries.filter((entry) => {
-    if (!isEntryActiveInMonth(entry, month)) return false;
-    return entryOccurrenceDate(entry, month) === date;
-  });
+  return getEntriesForMonth(month, context)
+    .filter((entry) => entryOccurrenceDate(entry, month) === date);
 }
 
 function renderReports() {
@@ -2463,7 +2516,7 @@ function buildSummaryData(title, rows, totalClass = "") {
 function entrySummaryRow(entry, amount) {
   return {
     title: entry.description || entry.category || "Eintrag",
-    meta: [personName(entry.personId), entry.category, displayText(entry.payment), entry.recurring ? "monatlich" : "", statusLabel(entry.status)].filter(Boolean).join(" · "),
+    meta: [personName(entry.personId), entry.category, displayText(entry.payment), recurrenceLabel(entry), statusLabel(entry.status)].filter(Boolean).join(" · "),
     amount,
   };
 }
@@ -2496,7 +2549,7 @@ function editEntry(id) {
   elements.amountInput.value = formatMoneyInput(entry.amount);
   elements.descriptionInput.value = entry.description;
   elements.paymentInput.value = entry.payment;
-  elements.recurringInput.checked = entry.recurring;
+  elements.recurrenceInput.value = entryRecurrence(entry);
   elements.entryEndInput.value = entry.endDate || "";
   elements.entryStatusInput.value = normalizeStatus(entry.status);
   syncFormMode();
@@ -2736,7 +2789,8 @@ function importBudgetRows(rows) {
         description: item["beschreibung"] || item["text"] || item["name"] || "",
         payment: item["zahlungsart"] || "",
         amount,
-        recurring: /ja|true|monat/i.test(item["monatlich"] || ""),
+        recurrence: normalizeRecurrence(item["wiederholung"] || item["rhythmus"] || item["intervall"] || "", /ja|true|monat/i.test(item["monatlich"] || "")),
+        recurring: normalizeRecurrence(item["wiederholung"] || item["rhythmus"] || item["intervall"] || "", /ja|true|monat/i.test(item["monatlich"] || "")) !== "none",
         endDate: normalizeDate(item["enddatum"] || item["bis datum"] || item["bis"] || ""),
         status: normalizeStatus(item["status"] || ""),
       });
@@ -2785,6 +2839,7 @@ function importPersonalBudgetLayout(rows) {
         description: leftName,
         payment: "",
         amount: Math.abs(leftAmount),
+        recurrence: "monthly",
         recurring: true,
         endDate: "",
         status: "open",
@@ -3565,21 +3620,94 @@ function debtStartMonthNumber(debt) {
   return debt.startDate ? dateToMonthNumber(debt.startDate) : -Infinity;
 }
 
+function selectedRecurrence() {
+  return normalizeRecurrence(elements.recurrenceInput?.value || "none");
+}
+
+function normalizeRecurrence(value, legacyRecurring = false) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["daily", "taeglich", "täglich"].includes(normalized)) return "daily";
+  if (["weekly", "woechentlich", "wöchentlich"].includes(normalized)) return "weekly";
+  if (["monthly", "monatlich", "true", "ja"].includes(normalized)) return "monthly";
+  if (["yearly", "annual", "jaehrlich", "jährlich"].includes(normalized)) return "yearly";
+  return legacyRecurring ? "monthly" : "none";
+}
+
+function entryRecurrence(entry) {
+  return normalizeRecurrence(entry?.recurrence, Boolean(entry?.recurring));
+}
+
+function isEntryRecurring(entry) {
+  return entryRecurrence(entry) !== "none";
+}
+
 function isEntryActiveInMonth(entry, month) {
-  const entryMonth = entry.date?.slice(0, 7);
-  if (!entryMonth) return false;
-  if (!entry.recurring) return entryMonth === month;
-  if (normalizeStatus(entry.status) === "ended" && !entry.endDate) return entryMonth === month;
-  const selected = monthToNumber(month);
-  const start = monthToNumber(entryMonth);
-  const end = entry.endDate ? dateToMonthNumber(entry.endDate) : Infinity;
-  return selected >= start && selected <= end;
+  return expandEntryOccurrences(entry, month).length > 0;
+}
+
+function expandEntryOccurrences(entry, month) {
+  const dates = occurrenceDatesForEntryInMonth(entry, month);
+  return dates.map((date) => ({
+    ...entry,
+    sourceId: entry.sourceId || entry.id,
+    occurrenceDate: date,
+    recurring: isEntryRecurring(entry),
+    recurrence: entryRecurrence(entry),
+  }));
+}
+
+function occurrenceDatesForEntryInMonth(entry, month) {
+  const startDate = normalizeDate(entry.date || "");
+  if (!startDate) return [];
+  const recurrence = entryRecurrence(entry);
+  if (normalizeStatus(entry.status) === "ended" && !entry.endDate && recurrence !== "none") {
+    return startDate.startsWith(month) ? [startDate] : [];
+  }
+  const endDate = normalizeDate(entry.endDate || "") || "";
+  const monthStart = monthToDate(month);
+  const monthEnd = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
+  if (compareDates(monthEnd, startDate) < 0) return [];
+  if (endDate && compareDates(monthStart, endDate) > 0) return [];
+
+  if (recurrence === "none") return startDate.startsWith(month) ? [startDate] : [];
+
+  const rangeStart = compareDates(startDate, monthStart) > 0 ? startDate : monthStart;
+  const rangeEnd = endDate && compareDates(endDate, monthEnd) < 0 ? endDate : monthEnd;
+  if (compareDates(rangeEnd, rangeStart) < 0) return [];
+
+  if (recurrence === "daily") return datesBetween(rangeStart, rangeEnd);
+
+  if (recurrence === "weekly") {
+    const offset = positiveModulo(dayDiff(startDate, rangeStart), 7);
+    let current = offset === 0 ? rangeStart : addDays(rangeStart, 7 - offset);
+    const dates = [];
+    while (compareDates(current, rangeEnd) <= 0) {
+      dates.push(current);
+      current = addDays(current, 7);
+    }
+    return dates;
+  }
+
+  if (recurrence === "monthly") {
+    const occurrence = monthlyOccurrenceDate(startDate, month);
+    return compareDates(occurrence, rangeStart) >= 0 && compareDates(occurrence, rangeEnd) <= 0 ? [occurrence] : [];
+  }
+
+  if (recurrence === "yearly") {
+    const [, startMonth] = startDate.split("-").map(Number);
+    const [, targetMonth] = month.split("-").map(Number);
+    if (startMonth !== targetMonth) return [];
+    const occurrence = monthlyOccurrenceDate(startDate, month);
+    return compareDates(occurrence, rangeStart) >= 0 && compareDates(occurrence, rangeEnd) <= 0 ? [occurrence] : [];
+  }
+
+  return [];
 }
 
 function entryOccurrenceDate(entry, month) {
-  if (!entry.recurring || entry.date?.startsWith(month)) return entry.date;
-  const day = Math.min(Number(entry.date?.slice(8, 10)) || 1, daysInMonth(month));
-  return `${month}-${String(day).padStart(2, "0")}`;
+  if (entry.occurrenceDate) return entry.occurrenceDate;
+  const dates = occurrenceDatesForEntryInMonth(entry, month);
+  return dates[0] || entry.date;
 }
 
 function debtOccurrenceDate(debt, month) {
@@ -3591,9 +3719,9 @@ function debtOccurrenceDate(debt, month) {
 function entryBadges(entry, month) {
   return [
     statusBadge(statusLabel(entry.status), `status-${normalizeStatus(entry.status)}`),
-    entry.recurring ? statusBadge("wiederkehrend", "status-recurring") : "",
-    entry.recurring && entry.endDate ? statusBadge(`endet ${formatMonthName(entry.endDate.slice(0, 7))}`, "status-ended") : "",
-    entry.recurring && !entry.date.startsWith(month) ? statusBadge("übernommen", "status-carry") : "",
+    isEntryRecurring(entry) ? statusBadge(recurrenceLabel(entry), "status-recurring") : "",
+    isEntryRecurring(entry) && entry.endDate ? statusBadge(`endet ${formatMonthName(entry.endDate.slice(0, 7))}`, "status-ended") : "",
+    isEntryRecurring(entry) && !entryOccurrenceDate(entry, month).startsWith(entry.date?.slice(0, 7) || "") ? statusBadge("übernommen", "status-carry") : "",
   ].filter(Boolean).join("");
 }
 
@@ -3639,6 +3767,52 @@ function daysInMonth(month) {
   return new Date(year, value, 0).getDate();
 }
 
+function monthlyOccurrenceDate(startDate, month) {
+  const day = Math.min(Number(startDate?.slice(8, 10)) || 1, daysInMonth(month));
+  return `${month}-${String(day).padStart(2, "0")}`;
+}
+
+function compareDates(a, b) {
+  return String(a || "").localeCompare(String(b || ""));
+}
+
+function parseDateParts(value) {
+  const [year, month, day] = String(value || "").split("-").map(Number);
+  return { year, month, day };
+}
+
+function dateToEpochDay(value) {
+  const { year, month, day } = parseDateParts(value);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function epochDayToDate(epochDay) {
+  const date = new Date(epochDay * 86400000);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function dayDiff(startDate, endDate) {
+  return dateToEpochDay(endDate) - dateToEpochDay(startDate);
+}
+
+function addDays(date, amount) {
+  return epochDayToDate(dateToEpochDay(date) + amount);
+}
+
+function datesBetween(startDate, endDate) {
+  const dates = [];
+  let current = startDate;
+  while (compareDates(current, endDate) <= 0) {
+    dates.push(current);
+    current = addDays(current, 1);
+  }
+  return dates;
+}
+
+function positiveModulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
 function daysLeftInMonth(month) {
   const [year, value] = month.split("-").map(Number);
   const now = new Date();
@@ -3653,7 +3827,7 @@ function formatMonthName(month) {
 function carryoverItemsForNextMonth(month) {
   const nextMonth = shiftMonth(month, 1);
   const recurring = getEntriesForMonth(nextMonth)
-    .filter((entry) => entry.recurring)
+    .filter(isEntryRecurring)
     .map((entry) => ({ label: entry.description || entry.category || "Buchung" }));
   const debts = getDebtsForMonth(nextMonth, getActiveContext(), { activeOnly: true })
     .map((debt) => ({ label: debt.creditor || "Schuld" }));
@@ -3664,7 +3838,7 @@ function nextPaymentForMonth(month) {
   const today = localDateString(new Date());
   const candidates = [
     ...getEntriesForMonth(month)
-      .filter((entry) => entry.recurring && entry.type === "expense")
+      .filter((entry) => isEntryRecurring(entry) && entry.type === "expense")
       .map((entry) => ({
         date: entryOccurrenceDate(entry, month),
         amount: Number(entry.amount || 0),
@@ -3783,6 +3957,11 @@ function statusLabel(status) {
   return labels[normalizeStatus(status)] || "offen";
 }
 
+function recurrenceLabel(entryOrValue) {
+  const value = typeof entryOrValue === "string" ? normalizeRecurrence(entryOrValue) : entryRecurrence(entryOrValue);
+  return value === "none" ? "" : RECURRENCE_LABELS[value] || "wiederkehrend";
+}
+
 function normalizeDebt(debt) {
   return {
     id: debt.id || createId(),
@@ -3834,6 +4013,7 @@ function normalizeBankConnection(connection) {
 function normalizeEntry(entry) {
   const date = entry.date || monthToDate(currentLocalMonth());
   const fallbackUpdatedAt = Date.parse(`${date}T12:00:00`) || 0;
+  const recurrence = normalizeRecurrence(entry.recurrence || entry.repeatInterval || entry.repeat || "", Boolean(entry.recurring));
   return {
     id: entry.id || createId(),
     personId: entry.personId || fallbackPersonId(),
@@ -3844,7 +4024,8 @@ function normalizeEntry(entry) {
     description: entry.description || "",
     payment: entry.payment || "",
     amount: Number(entry.amount || 0),
-    recurring: Boolean(entry.recurring),
+    recurrence,
+    recurring: recurrence !== "none",
     endDate: entry.endDate || (entry.endMonth ? monthToDate(entry.endMonth) : ""),
     status: normalizeStatus(entry.status),
     updatedAt: Number(entry.updatedAt) > 0 ? Number(entry.updatedAt) : fallbackUpdatedAt,
@@ -3859,7 +4040,7 @@ function normalizePerson(person) {
 }
 
 function personName(id) {
-  if (!id || id === defaultPersonId()) return "Gesamt";
+  if (!id || id === defaultPersonId()) return "Gemeinsam";
   return state.people.find((person) => person.id === id)?.name || state.people[0]?.name || "Gemeinsam";
 }
 
@@ -4054,6 +4235,60 @@ function runBudgetUpSelfTest() {
     deleteDebtLineageForTest("d-open-copy");
     deleteAssetLineageForTest("a-cash-copy");
     assert("Löschen entfernt Original und Kopien", !state.entries.some((entry) => sameLineage(entry, "e-expense")) && !state.debts.some((debt) => sameLineage(debt, "d-open")) && !state.assets.some((asset) => sameLineage(asset, "a-cash")), "lineage should be gone");
+
+    state.entries = [];
+    state.debts = [];
+    state.assets = [];
+    const farukExpenses = [
+      ["A-200", 200],
+      ["A-100", 100],
+      ["A-456", 456.86],
+      ["A-5", 5],
+      ["SIGMA KREDITBANK", 232.7],
+      ["kreditBest check24", 97.32],
+      ["IPHONE 15 PRO MAX 256GB", 42],
+      ["Vattenfall Strom", 31.58],
+      ["Telefónica O2", 27.99],
+      ["Miete Einbecker", 477.4],
+      ["Vodafone Kabel", 40],
+      ["A-80", 80],
+      ["A-200b", 200],
+      ["A-1000", 1000],
+    ];
+    state.entries.push(
+      { id: "faruk-jobcenter", personId: "case-test", type: "income", date: "2026-06-01", category: "Einkommen", description: "JobCenter", payment: "Überweisung", amount: 2066, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 20 },
+      { id: "faruk-roya", personId: "case-test", type: "income", date: "2026-06-28", category: "Einkommen", description: "Roya", payment: "Überweisung", amount: 200, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 21 },
+      { id: "bahar-rest", personId: "p2-test", type: "expense", date: "2026-06-02", category: "Sonstiges", description: "Andere Juni Ausgaben", payment: "Karte", amount: 1758.06, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 22 },
+      ...farukExpenses.map(([description, amount], index) => ({ id: `faruk-expense-${index}`, personId: "case-test", type: "expense", date: "2026-06-01", category: "Fixkosten", description, payment: "Lastschrift", amount, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 30 + index })),
+      ...[
+        ["IPHONE 15 PRO MAX 256GB", 42],
+        ["kreditBest check24", 97.32],
+        ["Miete Einbecker", 477.4],
+        ["SIGMA KREDITBANK", 232.7],
+        ["Telefónica O2", 27.99],
+        ["Vattenfall Strom", 31.58],
+        ["Vodafone Kabel", 30],
+      ].map(([description, amount], index) => ({ id: `aggregate-dup-${index}`, personId: defaultPersonId(), type: "expense", date: "2026-06-01", category: "Fixkosten", description, payment: "Lastschrift", amount, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 60 + index }))
+    );
+    const farukJune = calculateMonthSummary("2026-06", getActiveContext("case-test"));
+    const farukJuneDay = getCalendarDaySummary("2026-06-01", getActiveContext("case-test"));
+    const totalJune = calculateMonthSummary("2026-06", getActiveContext("all"));
+    assert("Fall A Faruk Juni Einnahmen", closeEnough(farukJune.income, 2266), JSON.stringify(farukJune));
+    assert("Fall A Faruk Juni Ausgaben", closeEnough(farukJune.entryExpense, 2990.85), JSON.stringify(farukJune));
+    assert("Fall A Faruk Tagesbilanz 01.06.", closeEnough(farukJuneDay.net, -924.85), JSON.stringify(farukJuneDay));
+    assert("Fall A Faruk Monatssaldo", closeEnough(farukJune.balance, -724.85), JSON.stringify(farukJune));
+    assert("Fall B Gesamt ohne alte Gesamt-Dubletten", closeEnough(totalJune.entryExpense, 4748.91), JSON.stringify(totalJune));
+
+    state.entries.push(
+      { id: "repeat-weekly", personId: "case-test", type: "expense", date: "2026-06-03", category: "Lebensmittel", description: "Lebensmittel wöchentlich", payment: "Karte", amount: 10, recurrence: "weekly", recurring: true, endDate: "", status: "open", updatedAt: 80 },
+      { id: "repeat-yearly", personId: "case-test", type: "expense", date: "2026-06-15", category: "Versicherungen", description: "Versicherung jährlich", payment: "Überweisung", amount: 120, recurrence: "yearly", recurring: true, endDate: "", status: "open", updatedAt: 81 },
+      { id: "repeat-daily", personId: "case-test", type: "expense", date: "2026-06-01", category: "Mobilität", description: "Parken täglich", payment: "Karte", amount: 2, recurrence: "daily", recurring: true, endDate: "2026-06-05", status: "open", updatedAt: 82 },
+      { id: "repeat-month-end", personId: "case-test", type: "expense", date: "2026-01-31", category: "Abos", description: "Monatsende", payment: "Lastschrift", amount: 7, recurrence: "monthly", recurring: true, endDate: "", status: "open", updatedAt: 83 }
+    );
+    assert("Wöchentlich erzeugt vier Juni-Termine", getEntriesForMonth("2026-06", getActiveContext("case-test")).filter((entry) => entry.id === "repeat-weekly").map((entry) => entryOccurrenceDate(entry, "2026-06")).join(",") === "2026-06-03,2026-06-10,2026-06-17,2026-06-24", JSON.stringify(getEntriesForMonth("2026-06", getActiveContext("case-test")).filter((entry) => entry.id === "repeat-weekly")));
+    assert("Jährlich bleibt jährlich", getEntriesForMonth("2026-06", getActiveContext("case-test")).some((entry) => entry.id === "repeat-yearly") && getEntriesForMonth("2027-06", getActiveContext("case-test")).some((entry) => entry.id === "repeat-yearly") && !getEntriesForMonth("2026-07", getActiveContext("case-test")).some((entry) => entry.id === "repeat-yearly"), "yearly recurrence");
+    assert("Täglich respektiert Enddatum", getEntriesForMonth("2026-06", getActiveContext("case-test")).filter((entry) => entry.id === "repeat-daily").length === 5 && !entriesForDate("2026-06-06", getActiveContext("case-test")).some((entry) => entry.id === "repeat-daily"), "daily recurrence");
+    assert("Monatsende wird geklemmt", entriesForDate("2026-02-28", getActiveContext("case-test")).some((entry) => entry.id === "repeat-month-end"), "31.01. -> 28.02.");
   } finally {
     state.categories = snapshot.categories;
     state.entries = snapshot.entries;

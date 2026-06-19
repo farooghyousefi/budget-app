@@ -2059,10 +2059,9 @@ label.field-error select,
 }
 
 .calendar-today-button {
-  position: absolute;
-  right: 12px;
-  top: 64px;
-  min-height: 32px;
+  justify-self: end;
+  margin: 8px 0 6px;
+  min-height: 36px;
 }
 
 .calendar-grid {
@@ -2860,6 +2859,7 @@ label span {
 }
 
 .calendar-head-panel {
+  display: grid;
   margin: 0 0 14px;
   padding: 14px;
   border-color: rgba(255, 255, 255, 0.82);
