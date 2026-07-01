@@ -2,11 +2,11 @@
   "name": "BudgetUp",
   "short_name": "BudgetUp",
   "description": "Moderner Budget- und Finanzmanager für Einnahmen, Ausgaben, Schulden und Vermögen.",
-  "start_url": "./index.html?v=89",
+  "start_url": "./index.html?v=90",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f1f2f6",
-  "theme_color": "#2f67c6",
+  "background_color": "#f5f7fb",
+  "theme_color": "#061a33",
   "icons": [
     {
       "src": "icons/icon-192.png",

@@ -810,7 +810,7 @@ function calculateMonthSummary(month, context = getActiveContext()) {
   const income = sum(monthEntries.filter((entry) => entry.type === "income"));
   const entryExpense = sum(monthEntries.filter((entry) => entry.type === "expense"));
   const debtMonthlyCost = getDebtsForMonth(month, context, { activeOnly: true })
-    .reduce((total, debt) => total + Number(debt.monthlyPayment || 0), 0);
+    .reduce((total, debt) => total + debtPaymentForMonth(debt, month), 0);
   const totalDebt = getDebtsForMonth(month, context)
     .reduce((total, debt) => total + remainingDebt(debt, month), 0);
   const totalAssets = getAssetsForContext(context)
@@ -2331,7 +2331,7 @@ function calendarItemsForDate(date, context = getActiveContext()) {
     .map((entry) => ({ ...entry, kind: "entry" }));
   const debtItems = activeDebts(month)
     .filter((debt) => contextMatchesItem(debt, context))
-    .filter((debt) => Number(debt.monthlyPayment || 0) > 0 && debtOccurrenceDate(debt, month) === date)
+    .filter((debt) => debtPaymentForMonth(debt, month) > 0 && debtOccurrenceDate(debt, month) === date)
     .map((debt) => ({
       kind: "debt",
       id: `debt-${debt.id}`,
@@ -2342,7 +2342,7 @@ function calendarItemsForDate(date, context = getActiveContext()) {
       category: "Schulden",
       description: debt.creditor || "Schuld",
       payment: debt.paymentMethod || "Rate",
-      amount: Number(debt.monthlyPayment || 0),
+      amount: debtPaymentForMonth(debt, month),
       updatedAt: Date.parse(`${date}T12:00:00`) || 0,
     }));
   return [...entries, ...debtItems];
@@ -3630,9 +3630,23 @@ function remainingDebt(debt, month) {
 
 function paidDebt(debt, month) {
   if (monthToNumber(month) < debtStartMonthNumber(debt)) return 0;
-  const paidMonths = paidMonthsUntil(debt, month);
-  const paidAmount = paidMonths * Number(debt.monthlyPayment || 0);
-  return Math.min(Number(debt.totalAmount || 0), Number(debt.paidSoFar || 0) + paidAmount);
+  return Math.min(Number(debt.totalAmount || 0), paidDebtBeforeMonth(debt, month) + debtPaymentForMonth(debt, month));
+}
+
+function paidDebtBeforeMonth(debt, month) {
+  if (!debt.startDate || monthToNumber(month) < dateToMonthNumber(debt.startDate)) return Math.min(Number(debt.totalAmount || 0), Number(debt.paidSoFar || 0));
+  const cappedMonth = debt.endDate && monthToNumber(month) > dateToMonthNumber(debt.endDate) ? debt.endDate.slice(0, 7) : month;
+  const elapsedMonthsBeforeSelected = Math.max(0, monthsBetween(debt.startDate.slice(0, 7), cappedMonth));
+  const scheduledPaid = elapsedMonthsBeforeSelected * Number(debt.monthlyPayment || 0);
+  return Math.min(Number(debt.totalAmount || 0), Number(debt.paidSoFar || 0) + scheduledPaid);
+}
+
+function debtPaymentForMonth(debt, month) {
+  if (!isDebtVisibleInMonth(debt, month) || isDebtClosed(debt)) return 0;
+  const monthlyPayment = Number(debt.monthlyPayment || 0);
+  if (monthlyPayment <= 0) return 0;
+  const remainingBeforeMonth = Math.max(0, Number(debt.totalAmount || 0) - paidDebtBeforeMonth(debt, month));
+  return Math.min(monthlyPayment, remainingBeforeMonth);
 }
 
 function paidMonthsUntil(debt, month) {
@@ -3642,7 +3656,7 @@ function paidMonthsUntil(debt, month) {
 }
 
 function isDebtActiveInMonth(debt, month) {
-  return isDebtVisibleInMonth(debt, month) && !isDebtClosed(debt) && remainingDebt(debt, month) > 0;
+  return isDebtVisibleInMonth(debt, month) && !isDebtClosed(debt) && debtPaymentForMonth(debt, month) > 0;
 }
 
 function isDebtVisibleInMonth(debt, month) {
@@ -4181,6 +4195,7 @@ function runBudgetUpSelfTest() {
       { id: "shared-test", name: "Gemeinsam" },
       { id: "p1-test", name: "Test Person" },
       { id: "p2-test", name: "Andere Person" },
+      { id: "debt-test", name: "Schulden Verlauf" },
       { id: "simple-test", name: "Einfacher Fall" },
       { id: "case-test", name: "Faruk" },
       { id: "case-copy", name: "Faruk Kopie" },
@@ -4201,6 +4216,7 @@ function runBudgetUpSelfTest() {
     state.debts = [
       { id: "d-open", personId: "p1-test", creditor: "Bank", totalAmount: 500, paidSoFar: 100, monthlyPayment: 50, startDate: "2026-06-03", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
       { id: "d-paid", personId: "p1-test", creditor: "Paid Bank", totalAmount: 300, paidSoFar: 300, monthlyPayment: 30, startDate: "2026-06-03", endDate: "", status: "paid", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
+      { id: "d-final", personId: "debt-test", creditor: "Final Rate", totalAmount: 120, paidSoFar: 0, monthlyPayment: 50, startDate: "2026-06-15", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
     ];
     state.assets = [
       { id: "a-cash", personId: "p1-test", name: "Bargeld", amount: 200, note: "" },
@@ -4232,6 +4248,14 @@ function runBudgetUpSelfTest() {
     assert("Kalender Tageswert Ausgabe", dayExpense.expense === 100 && dayExpense.net === -100, JSON.stringify(dayExpense));
     assert("Kalender Tageswert wiederkehrend", dayRecurring.expense === 50 && dayRecurring.recurring, JSON.stringify(dayRecurring));
     assert("Kalender Tageswert Schuld", dayDebt.debtExpense === 50 && dayDebt.net === -50, JSON.stringify(dayDebt));
+    const debtContext = getActiveContext("debt-test");
+    const finalDebtJune = calculateMonthSummary("2026-06", debtContext);
+    const finalDebtJuly = calculateMonthSummary("2026-07", debtContext);
+    const finalDebtAugust = calculateMonthSummary("2026-08", debtContext);
+    const finalDebtSeptember = calculateMonthSummary("2026-09", debtContext);
+    assert("Schuldenrate reduziert Restschuld monatlich", finalDebtJune.debtMonthlyCost === 50 && finalDebtJune.totalDebt === 70 && finalDebtJuly.debtMonthlyCost === 50 && finalDebtJuly.totalDebt === 20, JSON.stringify({ finalDebtJune, finalDebtJuly }));
+    assert("Letzte Schuldenrate wird auf Restbetrag begrenzt", finalDebtAugust.debtMonthlyCost === 20 && finalDebtAugust.totalDebt === 0 && finalDebtSeptember.debtMonthlyCost === 0 && finalDebtSeptember.totalDebt === 0, JSON.stringify({ finalDebtAugust, finalDebtSeptember }));
+    assert("Kalender zeigt letzte Schuldenrate nur mit Restbetrag", getCalendarDaySummary("2026-08-15", debtContext).debtExpense === 20, JSON.stringify(getCalendarDaySummary("2026-08-15", debtContext)));
     render();
     assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
     assert("Vermoegenszeile ist direkt bearbeitbar", Boolean(elements.assetList.querySelector('[data-row-edit-kind="asset"][data-row-edit-id="a-cash"]')), elements.assetList.innerHTML);
@@ -4277,7 +4301,7 @@ function runBudgetUpSelfTest() {
     state.debts.push({ ...state.debts[0], id: "d-open-copy", personId: "p2-test", duplicateOf: "d-open" });
     state.assets.push({ ...state.assets[0], id: "a-cash-copy", personId: "p2-test", duplicateOf: "a-cash" });
     const familyBeforeDelete = calculateMonthSummary("2026-06", getActiveContext("all"));
-    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && familyBeforeDelete.totalDebt === 1150 && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
+    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && familyBeforeDelete.totalDebt === 1220 && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
     const editedCopy = preserveCopyTracking({ ...state.entries.find((entry) => entry.id === "case-income-copy"), amount: 2100 }, state.entries.find((entry) => entry.id === "case-income-copy"));
     assert("Bearbeiten bewahrt duplicateOf", editedCopy.duplicateOf === "case-income", JSON.stringify(editedCopy));
     assert("Fall D/E Kopien bleiben aus Gesamt heraus", calculateMonthSummary("2026-05", getActiveContext("case-copy")).income === 2000 && calculateMonthSummary("2026-05", getActiveContext("all")).totalAssets === 11199, JSON.stringify(calculateMonthSummary("2026-05", getActiveContext("all"))));

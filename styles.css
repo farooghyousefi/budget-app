@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800;900&display=swap");
+
 :root {
   color-scheme: light;
   --bg: #edf4f1;
@@ -4153,5 +4155,475 @@ body::before {
     width: 62px;
     height: 62px;
     font-size: 2.5rem;
+  }
+}
+
+/* Premium BudgetUp concept lock v90 */
+:root {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-soft: #f8fafc;
+  --ink: #08162f;
+  --ink-soft: #33415c;
+  --muted: #7b8498;
+  --line: rgba(8, 22, 47, 0.09);
+  --line-strong: rgba(8, 22, 47, 0.14);
+  --brand: #2f7df6;
+  --brand-2: #2f7df6;
+  --brand-soft: #eaf2ff;
+  --accent: #dbeafe;
+  --navy: #061a33;
+  --navy-2: #092746;
+  --navy-3: #0d3358;
+  --good: #0b8f5a;
+  --good-soft: #eaf8f0;
+  --danger: #f0435c;
+  --danger-soft: #fff1f3;
+  --warning: #b76a12;
+  --warning-soft: #fff5e7;
+  --gold: #ca8a04;
+  --shadow-xs: 0 10px 28px rgba(15, 23, 42, 0.06);
+  --shadow: 0 20px 55px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 30px 90px rgba(15, 23, 42, 0.22);
+}
+
+html,
+body {
+  background: #f5f7fb;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% 2%, rgba(47, 125, 246, 0.09), transparent 22rem),
+    radial-gradient(circle at 92% 8%, rgba(6, 26, 51, 0.06), transparent 24rem),
+    linear-gradient(180deg, #fbfcff 0%, #f5f7fb 430px, #f4f6fa 100%);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app-shell {
+  width: min(1380px, 100%);
+  padding-inline: clamp(14px, 4vw, 34px);
+  padding-bottom: calc(132px + env(safe-area-inset-bottom));
+}
+
+.app-view[data-view="overview"]:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.app-topbar {
+  margin-bottom: 16px;
+  background: rgba(245, 247, 251, 0.76);
+  box-shadow: none;
+}
+
+.app-title-block h1 {
+  color: var(--ink);
+  font-size: clamp(1.18rem, 3.8vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.round-action {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.09);
+}
+
+.context-strip {
+  margin-bottom: 22px;
+}
+
+.context-picker select {
+  min-height: 48px;
+  padding-inline: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  font-weight: 750;
+}
+
+.context-picker span,
+.metric span,
+.insight-card > span,
+.month-compare span,
+.overview-money-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.panel,
+.metric,
+.insight-card,
+.month-compare article,
+.person-card,
+.account-summary-card,
+.bank-connect-card,
+.budget-row,
+.entry-row,
+.debt-row,
+.asset-row,
+.summary-breakdown-row,
+.settings-section,
+.account-type-row,
+.provider-row {
+  border: 1px solid rgba(8, 22, 47, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.07);
+}
+
+.panel {
+  padding: clamp(16px, 3vw, 22px);
+}
+
+.hero-balance-card {
+  position: relative;
+  overflow: hidden;
+  min-height: clamp(182px, 28vw, 236px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 28px;
+  padding: clamp(22px, 5vw, 34px);
+  background:
+    radial-gradient(circle at 82% 25%, rgba(47, 125, 246, 0.34), transparent 9rem),
+    radial-gradient(circle at 108% 42%, rgba(255, 255, 255, 0.10), transparent 12rem),
+    linear-gradient(135deg, #071b34 0%, #08213c 48%, #06162a 100%);
+  color: #fff;
+  box-shadow: 0 26px 70px rgba(4, 20, 40, 0.28);
+}
+
+.hero-balance-card::before {
+  content: "";
+  position: absolute;
+  right: 18%;
+  bottom: 34px;
+  width: 38%;
+  height: 58%;
+  pointer-events: none;
+  opacity: 0.30;
+  background:
+    repeating-radial-gradient(ellipse at center, transparent 0 10px, rgba(255, 255, 255, 0.18) 11px 12px);
+  transform: rotate(-8deg);
+}
+
+.hero-balance-card::after {
+  content: "62%";
+  display: grid;
+  place-items: center;
+  position: absolute;
+  right: clamp(18px, 5vw, 42px);
+  top: clamp(22px, 5vw, 34px);
+  width: clamp(86px, 21vw, 118px);
+  height: clamp(86px, 21vw, 118px);
+  border: clamp(8px, 2vw, 11px) solid rgba(47, 125, 246, 0.95);
+  border-left-color: rgba(255, 255, 255, 0.11);
+  border-bottom-color: rgba(47, 125, 246, 0.46);
+  border-radius: 999px;
+  color: #fff;
+  font-size: clamp(1.1rem, 4.3vw, 1.55rem);
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 14px 36px rgba(0, 0, 0, 0.14);
+}
+
+.hero-balance-card span,
+.hero-balance-card small {
+  position: relative;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.hero-balance-card strong {
+  position: relative;
+  z-index: 1;
+  max-width: calc(100% - clamp(106px, 28vw, 160px));
+  margin-top: 12px;
+  color: #fff;
+  font-size: clamp(2.55rem, 10vw, 4.25rem);
+  font-weight: 850;
+  letter-spacing: -0.055em;
+  text-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+}
+
+.hero-balance-card.positive strong,
+.hero-balance-card.negative strong {
+  color: #fff;
+}
+
+.hero-balance-card small {
+  display: inline-block;
+  margin-top: 6px;
+  font-weight: 650;
+}
+
+.overview-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(8, 22, 47, 0.08);
+  border-radius: 24px;
+  background: rgba(8, 22, 47, 0.08);
+  box-shadow: var(--shadow-xs);
+}
+
+.metric {
+  min-height: 112px;
+  border: 0;
+  border-radius: 0;
+  padding: 18px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.metric::before {
+  content: "";
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.income-metric::before {
+  content: "↑";
+  color: #0b8f5a;
+  background: #dff4e9;
+}
+
+.expense-metric::before {
+  content: "↓";
+  color: #f0435c;
+  background: #ffe4e8;
+}
+
+.debt-metric::before {
+  content: "▣";
+  color: #2f7df6;
+  background: #eaf2ff;
+}
+
+.net-metric::before {
+  content: "%";
+  color: #33415c;
+  background: #eef2f7;
+}
+
+.metric strong {
+  font-size: clamp(1.05rem, 3vw, 1.45rem);
+  letter-spacing: -0.025em;
+}
+
+.income-metric strong {
+  color: var(--good);
+}
+
+.expense-metric strong,
+.net-metric.negative strong,
+.negative-text {
+  color: var(--danger);
+}
+
+.debt-metric strong {
+  color: #1d4ed8;
+}
+
+.overview-money-panel {
+  border-radius: 26px;
+}
+
+.overview-money-grid {
+  gap: 14px;
+}
+
+.overview-money-card {
+  min-height: 122px;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: none;
+}
+
+.overview-money-card strong {
+  font-size: clamp(1.45rem, 5.2vw, 2.15rem);
+  letter-spacing: -0.045em;
+}
+
+.asset-shortcut {
+  border-color: rgba(11, 143, 90, 0.16);
+  background: linear-gradient(145deg, #eaf8f0 0%, #f7fbf8 100%);
+}
+
+.debt-shortcut {
+  border-color: rgba(202, 138, 4, 0.18);
+  background: linear-gradient(145deg, #fff4df 0%, #fffaf2 100%);
+}
+
+.overview-cards {
+  gap: 14px;
+}
+
+.insight-card {
+  min-height: 138px;
+  border-radius: 26px;
+  padding: 18px;
+}
+
+.insight-card strong {
+  font-size: clamp(1.2rem, 4vw, 1.65rem);
+  letter-spacing: -0.035em;
+}
+
+.quick-add-card {
+  align-items: center;
+  border-radius: 26px;
+}
+
+.quick-add-type label span {
+  border-radius: 14px;
+  font-weight: 750;
+}
+
+.quick-add-type input:checked + span {
+  border-color: rgba(47, 125, 246, 0.32);
+  background: #eaf2ff;
+  color: #1d64d8;
+}
+
+.submit-button,
+.fab-button {
+  background: linear-gradient(180deg, #3b82f6, #2466d8);
+  color: #fff;
+}
+
+.calendar-head-panel {
+  border-radius: 26px;
+}
+
+.calendar-day.selected {
+  background: #2f7df6;
+  color: #fff;
+}
+
+.entry-row,
+.asset-row,
+.debt-row {
+  border-radius: 22px;
+}
+
+.entry-date {
+  background: #edf3fb;
+  color: #0b1f3d;
+}
+
+.bottom-nav {
+  width: min(430px, calc(100vw - 24px));
+  border-color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.20);
+}
+
+.bottom-nav-item {
+  color: #111827;
+}
+
+.bottom-nav-item.active {
+  background: #eef2f8;
+  color: #2f7df6;
+}
+
+.bottom-nav-item.active svg {
+  color: #2f7df6;
+}
+
+.fab-button {
+  box-shadow: 0 22px 54px rgba(47, 125, 246, 0.42);
+}
+
+@media (min-width: 980px) {
+  .app-shell {
+    max-width: 1380px;
+  }
+
+  .app-view[data-view="overview"]:not([hidden]) {
+    grid-template-columns: minmax(0, 1.62fr) minmax(320px, 0.88fr);
+    align-items: start;
+  }
+
+  .app-view[data-view="overview"] > .hero-balance-card,
+  .app-view[data-view="overview"] > .overview-summary,
+  .app-view[data-view="overview"] > .overview-money-panel,
+  .app-view[data-view="overview"] > .calendar-head-panel,
+  .app-view[data-view="overview"] > .quick-add-card,
+  .app-view[data-view="overview"] > .month-compare {
+    grid-column: 1;
+  }
+
+  .app-view[data-view="overview"] > .overview-cards {
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    grid-template-columns: 1fr;
+  }
+
+  .overview-cards .insight-card {
+    min-height: 132px;
+  }
+
+  .quick-add-card {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-add-controls {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-balance-card {
+    border-radius: 26px;
+  }
+
+  .overview-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-radius: 20px;
+  }
+
+  .metric {
+    min-height: 102px;
+    padding: 12px 7px 10px;
+    align-content: center;
+    text-align: center;
+  }
+
+  .metric::before {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 8px;
+  }
+
+  .metric span {
+    font-size: 0.56rem;
+    letter-spacing: 0.045em;
+  }
+
+  .metric strong {
+    font-size: clamp(0.78rem, 3.25vw, 0.96rem);
+    overflow-wrap: anywhere;
+  }
+
+  .hero-balance-card strong {
+    max-width: calc(100% - 104px);
+  }
+
+  .hero-balance-card::after {
+    top: 24px;
+    right: 18px;
   }
 }
