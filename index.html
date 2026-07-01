@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#113b3c" />
+    <meta name="theme-color" content="#2f67c6" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=88" />
+    <link rel="manifest" href="manifest.webmanifest?v=89" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=88" />
+    <link rel="stylesheet" href="styles.css?v=89" />
   </head>
   <body>
     <main class="app-shell">
@@ -78,6 +78,24 @@
             <span>Nettovermögen</span>
             <strong id="netWorthValue">0,00 €</strong>
           </article>
+        </section>
+        <section class="panel overview-money-panel" aria-label="Vermögen und Schulden">
+          <div class="panel-title">
+            <h2>Vermögen & Schulden</h2>
+            <button id="overviewMoneyButton" class="icon-button" type="button" title="Geldbereich öffnen" aria-label="Geldbereich öffnen">›</button>
+          </div>
+          <div class="overview-money-grid">
+            <button id="overviewAssetShortcut" class="overview-money-card asset-shortcut" type="button">
+              <span>Vermögen</span>
+              <strong id="overviewAssetShortcutValue">0,00 €</strong>
+              <small id="overviewAssetShortcutHint">0 Werte</small>
+            </button>
+            <button id="overviewDebtShortcut" class="overview-money-card debt-shortcut" type="button">
+              <span>Schulden</span>
+              <strong id="overviewDebtShortcutValue">0,00 €</strong>
+              <small id="overviewDebtShortcutHint">0 offene</small>
+            </button>
+          </div>
         </section>
         <section class="overview-cards">
           <article class="insight-card">
@@ -725,6 +743,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=88" defer></script>
+    <script src="app.js?v=89" defer></script>
   </body>
 </html>

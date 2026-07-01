@@ -3606,3 +3606,552 @@ body {
     justify-self: start;
   }
 }
+
+/* Screenshot-style mobile finance app refresh */
+[hidden] {
+  display: none !important;
+}
+
+:root {
+  --bg: #f1f2f6;
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-soft: #f8f9fc;
+  --ink: #080d12;
+  --ink-soft: #26313a;
+  --muted: #8b9099;
+  --line: rgba(28, 34, 42, 0.08);
+  --line-strong: rgba(28, 34, 42, 0.12);
+  --brand: #2f67c6;
+  --brand-2: #55bec9;
+  --brand-soft: #e9f4f7;
+  --accent: #dff7fa;
+  --good: #5fd9ad;
+  --good-soft: #ecfbf5;
+  --danger: #ef5365;
+  --danger-soft: #fff0f3;
+  --warning: #c99336;
+  --warning-soft: #fff5e7;
+  --neutral-soft: #f0f1f5;
+  --shadow-xs: 0 8px 24px rgba(20, 26, 36, 0.05);
+  --shadow: 0 18px 48px rgba(20, 26, 36, 0.08);
+  --shadow-lg: 0 28px 80px rgba(20, 26, 36, 0.2);
+}
+
+html,
+body {
+  background: var(--bg);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(244, 247, 250, 0.96), rgba(241, 242, 246, 0.98) 320px),
+    var(--bg);
+  color: var(--ink);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% -6%, rgba(85, 190, 201, 0.24), transparent 22rem),
+    radial-gradient(circle at 82% 5%, rgba(47, 103, 198, 0.12), transparent 20rem);
+}
+
+.app-shell {
+  width: min(940px, 100%);
+  padding-top: max(14px, env(safe-area-inset-top));
+  padding-bottom: calc(128px + env(safe-area-inset-bottom));
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 54px;
+  align-items: center;
+  margin: 0 calc(-1 * clamp(12px, 4vw, 26px)) 12px;
+  padding: max(10px, env(safe-area-inset-top)) clamp(12px, 4vw, 26px) 12px;
+  border: 0;
+  background: rgba(241, 242, 246, 0.72);
+  backdrop-filter: blur(18px);
+}
+
+.app-title-block {
+  text-align: center;
+}
+
+.app-title-block .eyebrow {
+  display: none;
+}
+
+.app-title-block h1 {
+  color: #070b10;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.round-action {
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #0e1116;
+  box-shadow: 0 14px 32px rgba(20, 26, 36, 0.08);
+}
+
+.context-strip {
+  position: relative;
+  top: auto;
+  z-index: 1;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.context-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.context-picker span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.context-picker select {
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  box-shadow: var(--shadow-xs);
+}
+
+.panel,
+.metric,
+.insight-card,
+.month-compare article,
+.person-card,
+.account-summary-card,
+.bank-connect-card,
+.budget-row,
+.entry-row,
+.debt-row,
+.asset-row,
+.summary-breakdown-row,
+.settings-section,
+.account-type-row,
+.provider-row {
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-xs);
+}
+
+.panel {
+  padding: 18px;
+}
+
+.hero-balance-card {
+  min-height: 184px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 249, 252, 0.94)),
+    #fff;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  padding: 26px 22px;
+}
+
+.hero-balance-card::after {
+  right: -66px;
+  bottom: -80px;
+  border-color: rgba(85, 190, 201, 0.16);
+}
+
+.hero-balance-card span,
+.hero-balance-card small {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.hero-balance-card strong {
+  color: var(--good);
+  font-size: clamp(3rem, 14vw, 5rem);
+  font-weight: 950;
+}
+
+.hero-balance-card.negative strong {
+  color: var(--danger);
+}
+
+.metric {
+  min-height: 96px;
+  padding: 15px;
+}
+
+.metric span,
+.insight-card > span,
+.month-compare span,
+.account-summary-card > span {
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.income-metric {
+  background: var(--good-soft);
+}
+
+.expense-metric {
+  background: var(--danger-soft);
+}
+
+.debt-metric,
+.carryover-card,
+.debt-row.active {
+  background: var(--warning-soft);
+}
+
+.net-metric,
+.account-summary-card {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.calendar-head-panel {
+  margin-bottom: 18px;
+  border-radius: 32px;
+  padding: 20px 18px 22px;
+}
+
+.calendar-title-row {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+}
+
+.calendar-title-row h2 {
+  font-size: 1.4rem;
+  font-weight: 950;
+  text-align: left;
+}
+
+.calendar-title-row span,
+#calendarSubtitle {
+  display: none;
+}
+
+.calendar-title-row .icon-button,
+.calendar-today-button {
+  border-radius: 999px;
+}
+
+.calendar-today-button {
+  justify-self: end;
+  min-height: 44px;
+  margin: 10px 0 4px;
+  padding-inline: 18px;
+  font-size: 1rem;
+}
+
+.calendar-grid {
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.calendar-weekday {
+  color: #8d9299;
+  font-size: 0.8rem;
+}
+
+.calendar-day {
+  min-height: 74px;
+  border: 0;
+  border-radius: 20px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.calendar-day span {
+  font-size: 1.36rem;
+  font-weight: 500;
+}
+
+.calendar-day small {
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.calendar-day.selected {
+  background: var(--brand-2);
+  color: #fff;
+}
+
+.calendar-day.selected span {
+  font-weight: 900;
+}
+
+.calendar-day.today:not(.selected) {
+  background: rgba(85, 190, 201, 0.12);
+}
+
+.calendar-day.today::after {
+  display: none;
+}
+
+.entry-row,
+.asset-row,
+.debt-row {
+  min-height: 76px;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.actionable-row:hover,
+.actionable-row:focus-visible {
+  outline: none;
+  box-shadow: 0 18px 40px rgba(20, 26, 36, 0.12);
+  transform: translateY(-1px);
+}
+
+.entry-date {
+  min-height: 52px;
+  border-radius: 18px;
+  background: #eef6f7;
+  color: var(--ink);
+}
+
+.entry-row::before {
+  inset: 16px auto 16px 0;
+  width: 5px;
+}
+
+.inline-controls .icon-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  background: rgba(246, 248, 251, 0.9);
+  color: #49545c;
+}
+
+.asset-row {
+  border: 1px solid rgba(95, 217, 173, 0.28);
+  background: var(--good-soft);
+}
+
+.overview-money-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.overview-money-panel .panel-title {
+  margin-bottom: 0;
+}
+
+.overview-money-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.overview-money-card {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  border: 1px solid transparent;
+  border-radius: 22px;
+  padding: 14px;
+  text-align: left;
+}
+
+.overview-money-card span {
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.overview-money-card strong {
+  color: var(--ink);
+  font-size: clamp(1.35rem, 7vw, 1.9rem);
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.overview-money-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.asset-shortcut {
+  border-color: rgba(95, 217, 173, 0.28);
+  background: linear-gradient(145deg, rgba(236, 251, 245, 0.98), rgba(255, 255, 255, 0.86));
+}
+
+.asset-shortcut span,
+.asset-shortcut strong {
+  color: #087149;
+}
+
+.debt-shortcut {
+  border-color: rgba(201, 147, 54, 0.28);
+  background: linear-gradient(145deg, rgba(255, 245, 231, 0.98), rgba(255, 255, 255, 0.86));
+}
+
+.debt-shortcut span,
+.debt-shortcut strong {
+  color: #a35f10;
+}
+
+.asset-amount {
+  color: var(--good);
+  font-size: 1.22rem;
+  font-weight: 950;
+}
+
+.debt-number-row > b,
+.debt-numbers .remaining,
+.debt-numbers .remaining > b {
+  color: var(--danger);
+}
+
+.bottom-nav {
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  width: min(760px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 34px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 58px rgba(20, 26, 36, 0.16);
+  backdrop-filter: blur(20px);
+}
+
+.bottom-nav-item {
+  min-height: 58px;
+  border-radius: 26px;
+  color: #20242a;
+  font-size: 0.64rem;
+  font-weight: 850;
+}
+
+.bottom-nav-item.active {
+  background: #e7e8ee;
+  color: var(--brand-2);
+}
+
+.bottom-nav-item:focus {
+  outline: none;
+}
+
+.bottom-nav-item:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(85, 190, 201, 0.34);
+}
+
+.bottom-nav-item svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2;
+}
+
+.fab-layer {
+  right: max(22px, env(safe-area-inset-right));
+  bottom: calc(98px + env(safe-area-inset-bottom));
+}
+
+.fab-button {
+  width: 68px;
+  height: 68px;
+  background: #2f67c6;
+  box-shadow: 0 18px 42px rgba(47, 103, 198, 0.35);
+  font-size: 2.9rem;
+}
+
+.fab-menu {
+  border-radius: 24px;
+}
+
+.submit-button {
+  border-radius: 18px;
+  background: #2f67c6;
+}
+
+.secondary-button {
+  border-radius: 999px;
+}
+
+@media (min-width: 900px) {
+  .calendar-head-panel {
+    grid-column: 1 / -1;
+  }
+
+  .overview-cards {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .app-shell {
+    padding-inline: 14px;
+  }
+
+  .app-topbar {
+    margin-inline: -14px;
+    padding-inline: 14px;
+  }
+
+  .calendar-grid {
+    gap: 6px;
+  }
+
+  .calendar-day {
+    min-height: 72px;
+    border-radius: 18px;
+  }
+
+  .overview-money-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .calendar-day span {
+    font-size: 1.25rem;
+  }
+
+  .bottom-nav {
+    width: calc(100vw - 18px);
+    left: 9px;
+    right: 9px;
+    border-radius: 30px;
+  }
+
+  .bottom-nav-item {
+    min-height: 54px;
+    border-radius: 23px;
+    font-size: 0.55rem;
+  }
+
+  .bottom-nav-item svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .fab-button {
+    width: 62px;
+    height: 62px;
+    font-size: 2.5rem;
+  }
+}

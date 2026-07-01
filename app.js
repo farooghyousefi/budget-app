@@ -99,6 +99,7 @@ const elements = {
   viewTitle: document.querySelector("#viewTitle"),
   fabButton: document.querySelector("#fabButton"),
   fabMenu: document.querySelector("#fabMenu"),
+  calendarPanel: document.querySelector(".calendar-head-panel"),
   formTitle: document.querySelector("#formTitle"),
   entryId: document.querySelector("#entryId"),
   typeInput: document.querySelector("#typeInput"),
@@ -166,6 +167,13 @@ const elements = {
   overviewIncomeValue: document.querySelector("#overviewIncomeValue"),
   overviewExpenseValue: document.querySelector("#overviewExpenseValue"),
   overviewMonthLabel: document.querySelector("#overviewMonthLabel"),
+  overviewMoneyButton: document.querySelector("#overviewMoneyButton"),
+  overviewAssetShortcut: document.querySelector("#overviewAssetShortcut"),
+  overviewDebtShortcut: document.querySelector("#overviewDebtShortcut"),
+  overviewAssetShortcutValue: document.querySelector("#overviewAssetShortcutValue"),
+  overviewDebtShortcutValue: document.querySelector("#overviewDebtShortcutValue"),
+  overviewAssetShortcutHint: document.querySelector("#overviewAssetShortcutHint"),
+  overviewDebtShortcutHint: document.querySelector("#overviewDebtShortcutHint"),
   overviewRecurringValue: document.querySelector("#overviewRecurringValue"),
   overviewRecurringHint: document.querySelector("#overviewRecurringHint"),
   accountsNetWorthValue: document.querySelector("#accountsNetWorthValue"),
@@ -337,6 +345,9 @@ elements.bankConnectButton?.addEventListener("click", openBankInfoModal);
 elements.moreBankConnectButton?.addEventListener("click", openBankInfoModal);
 elements.bankInfoBackdrop?.addEventListener("click", closeBankInfoModal);
 elements.bankInfoCloseButton?.addEventListener("click", closeBankInfoModal);
+[elements.overviewMoneyButton, elements.overviewAssetShortcut, elements.overviewDebtShortcut].forEach((button) => {
+  button?.addEventListener("click", () => setActiveView("accounts"));
+});
 document.querySelectorAll("[data-more-action]").forEach((button) => {
   button.addEventListener("click", () => handleMoreAction(button.dataset.moreAction));
 });
@@ -893,6 +904,9 @@ function setActiveView(view, { resetScroll = true } = {}) {
   elements.appViews.forEach((section) => {
     section.hidden = section.dataset.view !== activeView;
   });
+  if (elements.calendarPanel) {
+    elements.calendarPanel.hidden = activeView !== "transactions";
+  }
   elements.navButtons.forEach((button) => {
     const selected = button.dataset.viewTarget === activeView;
     button.classList.toggle("active", selected);
@@ -1871,7 +1885,7 @@ function transactionRowHtml(entry, monthOrDate) {
   const badges = entryBadges(entry, month);
   const occurrence = monthOrDate.length === 10 ? monthOrDate : entryOccurrenceDate(entry, month);
   return `
-    <article class="entry-row ${entry.type}">
+      <article class="entry-row ${entry.type} actionable-row" role="button" tabindex="0" data-row-edit-kind="entry" data-row-edit-id="${escapeHtml(entry.id)}">
       <time class="entry-date" datetime="${occurrence}">${formatDate(occurrence)}</time>
       <div class="entry-main">
         <div class="row-heading">
@@ -1895,6 +1909,36 @@ function wireEntryRowActions(root) {
   });
   root.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", () => deleteEntry(button.dataset.delete));
+  });
+  root.querySelectorAll("[data-debt-edit]").forEach((button) => {
+    button.addEventListener("click", () => editDebt(button.dataset.debtEdit));
+  });
+  root.querySelectorAll("[data-debt-delete]").forEach((button) => {
+    button.addEventListener("click", () => deleteDebt(button.dataset.debtDelete));
+  });
+  root.querySelectorAll("[data-asset-edit]").forEach((button) => {
+    button.addEventListener("click", () => editAsset(button.dataset.assetEdit));
+  });
+  root.querySelectorAll("[data-asset-delete]").forEach((button) => {
+    button.addEventListener("click", () => deleteAsset(button.dataset.assetDelete));
+  });
+  root.querySelectorAll("[data-row-edit-kind]").forEach((row) => {
+    const open = () => {
+      const { rowEditKind, rowEditId } = row.dataset;
+      if (rowEditKind === "entry") editEntry(rowEditId);
+      if (rowEditKind === "debt") editDebt(rowEditId);
+      if (rowEditKind === "asset") editAsset(rowEditId);
+    };
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, select, textarea")) return;
+      open();
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (event.target.closest("button, a, input, select, textarea")) return;
+      event.preventDefault();
+      open();
+    });
   });
 }
 
@@ -1923,7 +1967,7 @@ function renderDebts() {
       debt.note,
     ].filter(Boolean).join(" · ");
     return `
-      <article class="debt-row ${active ? "active" : ""}">
+      <article class="debt-row ${active ? "active" : ""} actionable-row" role="button" tabindex="0" data-row-edit-kind="debt" data-row-edit-id="${escapeHtml(debt.id)}">
         <div class="debt-main">
           <div class="row-heading">
             <strong>${escapeHtml(debt.creditor)}</strong>
@@ -1951,12 +1995,7 @@ function renderDebts() {
     `;
   }).join("");
 
-  elements.debtList.querySelectorAll("[data-debt-edit]").forEach((button) => {
-    button.addEventListener("click", () => editDebt(button.dataset.debtEdit));
-  });
-  elements.debtList.querySelectorAll("[data-debt-delete]").forEach((button) => {
-    button.addEventListener("click", () => deleteDebt(button.dataset.debtDelete));
-  });
+  wireEntryRowActions(elements.debtList);
 }
 
 function debtNumberLine(label, value, className = "", tag = "span") {
@@ -1980,7 +2019,7 @@ function renderAssets() {
   }
 
   elements.assetList.innerHTML = assets.map((asset) => `
-    <article class="asset-row">
+    <article class="asset-row actionable-row" role="button" tabindex="0" data-row-edit-kind="asset" data-row-edit-id="${escapeHtml(asset.id)}">
       <div class="debt-main">
         <div class="row-heading">
           <strong>${escapeHtml(asset.name)}</strong>
@@ -1995,12 +2034,7 @@ function renderAssets() {
     </article>
   `).join("");
 
-  elements.assetList.querySelectorAll("[data-asset-edit]").forEach((button) => {
-    button.addEventListener("click", () => editAsset(button.dataset.assetEdit));
-  });
-  elements.assetList.querySelectorAll("[data-asset-delete]").forEach((button) => {
-    button.addEventListener("click", () => deleteAsset(button.dataset.assetDelete));
-  });
+  wireEntryRowActions(elements.assetList);
 }
 
 function openAssetForm(id = "") {
@@ -2132,6 +2166,11 @@ function renderSummary() {
   elements.netWorthValue.textContent = formatMoney.format(netWorth);
   elements.accountsNetWorthValue.textContent = formatMoney.format(netWorth);
   elements.accountsDebtValue.textContent = formatMoney.format(totalDebt);
+  elements.overviewAssetShortcutValue.textContent = formatMoney.format(totalAssets);
+  elements.overviewDebtShortcutValue.textContent = formatMoney.format(totalDebt);
+  elements.overviewAssetShortcutHint.textContent = `${getAssetsForContext().length} Wert${getAssetsForContext().length === 1 ? "" : "e"}`;
+  const openDebts = getDebtsForMonth(month, getActiveContext(), { activeOnly: true }).length;
+  elements.overviewDebtShortcutHint.textContent = `${openDebts} offen`;
   elements.netWorthValue.parentElement.classList.toggle("positive", netWorth >= 0);
   elements.netWorthValue.parentElement.classList.toggle("negative", netWorth < 0);
   renderMonthComparison(month);
@@ -2312,14 +2351,18 @@ function calendarItemsForDate(date, context = getActiveContext()) {
 function calendarDebtRowHtml(item) {
   const meta = [personName(item.personId), item.category, displayText(item.payment)].filter(Boolean).join(" · ");
   return `
-    <article class="entry-row debt-calendar expense">
+    <article class="entry-row debt-calendar expense actionable-row" role="button" tabindex="0" data-row-edit-kind="debt" data-row-edit-id="${escapeHtml(item.sourceId)}">
       <time class="entry-date" datetime="${item.date}">${formatDate(item.date)}</time>
       <div class="entry-main">
         <div class="row-heading">
           <strong>${escapeHtml(item.description)}</strong>
-          <span class="status-badge status-carry">Schuldenrate</span>
+          <span class="entry-controls inline-controls">
+            <button class="icon-button" type="button" title="Schuld bearbeiten" aria-label="Schuld bearbeiten" data-debt-edit="${escapeHtml(item.sourceId)}">✎</button>
+            <button class="icon-button" type="button" title="Schuld löschen" aria-label="Schuld löschen" data-debt-delete="${escapeHtml(item.sourceId)}">×</button>
+          </span>
         </div>
         <span>${escapeHtml(meta)}</span>
+        <div class="status-badges"><span class="status-badge status-carry">Schuldenrate</span></div>
       </div>
       <div class="entry-amount expense">-${formatMoney.format(item.amount)}</div>
     </article>
@@ -4126,6 +4169,7 @@ function runBudgetUpSelfTest() {
     selectedPersonId: state.selectedPersonId,
   });
   const previousMonth = elements.monthInput.value;
+  const previousSelectedCalendarDay = selectedCalendarDay;
   const results = [];
   const assert = (name, condition, detail = "") => {
     results.push({ name, pass: Boolean(condition), detail });
@@ -4188,6 +4232,12 @@ function runBudgetUpSelfTest() {
     assert("Kalender Tageswert Ausgabe", dayExpense.expense === 100 && dayExpense.net === -100, JSON.stringify(dayExpense));
     assert("Kalender Tageswert wiederkehrend", dayRecurring.expense === 50 && dayRecurring.recurring, JSON.stringify(dayRecurring));
     assert("Kalender Tageswert Schuld", dayDebt.debtExpense === 50 && dayDebt.net === -50, JSON.stringify(dayDebt));
+    render();
+    assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
+    assert("Vermoegenszeile ist direkt bearbeitbar", Boolean(elements.assetList.querySelector('[data-row-edit-kind="asset"][data-row-edit-id="a-cash"]')), elements.assetList.innerHTML);
+    selectedCalendarDay = "2026-06-03";
+    renderCalendarDayList();
+    assert("Kalender-Schuldenrate ist direkt bearbeitbar", Boolean(elements.calendarDayList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.calendarDayList.innerHTML);
 
     const quickExpense = parseQuickAdd("12,50 Kaffee Lebensmittel", "expense", context, "2026-06");
     const quickIncome = parseQuickAdd("200 Upwork Einkommen", "income", context, "2026-06");
@@ -4298,6 +4348,7 @@ function runBudgetUpSelfTest() {
     state.people = snapshot.people;
     state.selectedPersonId = snapshot.selectedPersonId;
     elements.monthInput.value = previousMonth;
+    selectedCalendarDay = previousSelectedCalendarDay;
     ensurePeople();
     render();
   }
