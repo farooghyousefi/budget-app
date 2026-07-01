@@ -4627,3 +4627,325 @@ body {
     right: 18px;
   }
 }
+
+/* Reference-layout lock: mobile header + desktop sidebar */
+.desktop-sidebar,
+.desktop-top-actions {
+  display: none;
+}
+
+.mobile-brand {
+  color: var(--ink);
+  font-size: 1.26rem;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}
+
+.hero-mini-totals {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  width: 100%;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.hero-mini-totals span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-inline: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.hero-mini-totals span:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.hero-mini-totals b {
+  color: #64d99f;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.hero-mini-totals span:nth-child(2) b,
+.hero-mini-totals span:nth-child(2) strong {
+  color: #ff5b70;
+}
+
+.hero-mini-totals span:nth-child(3) b {
+  color: #55a0ff;
+}
+
+.hero-mini-totals strong {
+  max-width: none;
+  margin: 0;
+  color: #fff;
+  font-size: clamp(0.94rem, 3.5vw, 1.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-shadow: none;
+}
+
+.overview-summary {
+  position: relative;
+  padding-top: 46px;
+}
+
+.overview-summary::before {
+  content: "Schnellüberblick";
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 979px) {
+  .app-topbar {
+    grid-template-columns: minmax(0, 1fr) 50px;
+  }
+
+  .app-title-block {
+    display: none;
+  }
+
+  .settings-button svg {
+    display: block;
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .context-strip {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(136px, 0.92fr);
+    gap: 12px;
+  }
+
+  .context-picker,
+  .month-picker {
+    min-width: 0;
+  }
+
+  .context-picker span,
+  .month-picker span {
+    display: none;
+  }
+
+  .month-picker-quiet {
+    display: block !important;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .month-picker input {
+    width: 100%;
+    min-height: 48px;
+    border: 0;
+    border-radius: 18px;
+    padding: 0 14px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--ink);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+    font-weight: 750;
+  }
+}
+
+@media (min-width: 980px) {
+  body {
+    background:
+      radial-gradient(circle at 18% 4%, rgba(47, 125, 246, 0.08), transparent 24rem),
+      linear-gradient(180deg, #fbfcff 0%, #f7f9fc 100%);
+  }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: 238px minmax(0, 1fr);
+    column-gap: 24px;
+    width: min(1500px, calc(100vw - 48px));
+    padding: 28px 0 34px;
+  }
+
+  .app-shell > :not(.desktop-sidebar) {
+    grid-column: 2;
+  }
+
+  .desktop-sidebar {
+    position: sticky;
+    top: 28px;
+    grid-column: 1;
+    grid-row: 1 / span 20;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 56px);
+    padding: 26px 16px;
+    border-radius: 20px 0 0 20px;
+    background:
+      radial-gradient(circle at 92% 12%, rgba(47, 125, 246, 0.24), transparent 12rem),
+      linear-gradient(180deg, #08213c 0%, #061a33 58%, #041323 100%);
+    color: #fff;
+    box-shadow: 0 28px 80px rgba(4, 20, 40, 0.22);
+  }
+
+  .desktop-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 10px 28px;
+    font-size: 1.18rem;
+    font-weight: 900;
+  }
+
+  .desktop-brand svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .desktop-nav {
+    display: grid;
+    gap: 12px;
+  }
+
+  .desktop-sidebar .bottom-nav-item {
+    justify-content: start;
+    grid-template-columns: 24px 1fr;
+    display: grid;
+    min-height: 54px;
+    padding: 0 14px;
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.84);
+    background: transparent;
+    font-size: 0.94rem;
+    text-align: left;
+  }
+
+  .desktop-sidebar .bottom-nav-item.active {
+    color: #fff;
+    background: linear-gradient(180deg, #3b82f6, #1f6ff2);
+    box-shadow: 0 14px 30px rgba(47, 125, 246, 0.28);
+  }
+
+  .desktop-sidebar .bottom-nav-item svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+  }
+
+  .desktop-sidebar-footer {
+    display: grid;
+    gap: 8px;
+    margin-top: auto;
+  }
+
+  .desktop-sidebar-footer .bottom-nav-item {
+    min-height: 42px;
+    font-size: 0.78rem;
+  }
+
+  .app-topbar {
+    display: none;
+  }
+
+  .context-strip {
+    display: grid;
+    grid-template-columns: 220px minmax(180px, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    margin: 0 0 26px;
+  }
+
+  .context-picker span,
+  .month-picker span {
+    display: none;
+  }
+
+  .month-picker-quiet {
+    display: block !important;
+    position: static !important;
+    inline-size: auto !important;
+    block-size: auto !important;
+    overflow: visible !important;
+    clip-path: none !important;
+    white-space: normal !important;
+    justify-self: center;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .context-picker select,
+  .month-picker input {
+    min-height: 48px;
+    border: 1px solid rgba(8, 22, 47, 0.08);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+    font-weight: 750;
+  }
+
+  .month-picker input {
+    width: 180px;
+    padding-inline: 16px;
+  }
+
+  .desktop-top-actions {
+    display: flex;
+    gap: 10px;
+    justify-self: end;
+  }
+
+  .desktop-top-actions .secondary-button {
+    min-height: 44px;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+
+  .fab-layer {
+    right: max(34px, calc((100vw - min(1500px, calc(100vw - 48px))) / 2 + 24px));
+    bottom: 32px;
+  }
+
+  .fab-button {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+@media (max-width: 979px) {
+  .context-strip .month-picker.month-picker-quiet {
+    position: static !important;
+    inline-size: auto !important;
+    block-size: auto !important;
+    overflow: visible !important;
+    clip-path: none !important;
+    white-space: normal !important;
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .summary-grid.overview-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

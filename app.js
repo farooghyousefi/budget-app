@@ -167,6 +167,9 @@ const elements = {
   overviewIncomeValue: document.querySelector("#overviewIncomeValue"),
   overviewExpenseValue: document.querySelector("#overviewExpenseValue"),
   overviewMonthLabel: document.querySelector("#overviewMonthLabel"),
+  heroIncomeValue: document.querySelector("#heroIncomeValue"),
+  heroExpenseValue: document.querySelector("#heroExpenseValue"),
+  heroBudgetValue: document.querySelector("#heroBudgetValue"),
   overviewMoneyButton: document.querySelector("#overviewMoneyButton"),
   overviewAssetShortcut: document.querySelector("#overviewAssetShortcut"),
   overviewDebtShortcut: document.querySelector("#overviewDebtShortcut"),
@@ -2157,6 +2160,9 @@ function renderSummary() {
   elements.overviewMonthLabel.textContent = formatMonthName(month);
   elements.overviewIncomeValue.textContent = formatMoney.format(summary.income);
   elements.overviewExpenseValue.textContent = formatMoney.format(summary.expense);
+  elements.heroIncomeValue.textContent = formatMoney.format(summary.income);
+  elements.heroExpenseValue.textContent = formatMoney.format(summary.expense);
+  elements.heroBudgetValue.textContent = formatMoney.format(calculateBudgetUsage(month, getActiveContext()).totalBudget || summary.income);
   elements.remainingValue.textContent = formatMoney.format(remaining);
   elements.remainingValue.nextElementSibling.textContent = remaining >= 0 ? "Bleibt am Monatsende" : "Über Budget";
   elements.remainingValue.parentElement.classList.toggle("positive", remaining >= 0);

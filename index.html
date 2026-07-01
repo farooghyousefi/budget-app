@@ -8,23 +8,42 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=90" />
+    <link rel="manifest" href="manifest.webmanifest?v=91" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=90" />
+    <link rel="stylesheet" href="styles.css?v=91" />
   </head>
   <body>
     <main class="app-shell">
+      <aside class="desktop-sidebar" aria-label="Desktop-Navigation">
+        <div class="desktop-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"></path><path d="M4 20h16"></path></svg>
+          <strong>BudgetUp</strong>
+        </div>
+        <nav class="desktop-nav" aria-label="Desktop Hauptnavigation">
+          <button class="bottom-nav-item active" type="button" data-view-target="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11.5 12 5l7 6.5V20a1 1 0 0 1-1 1h-4.2v-5.2h-3.6V21H6a1 1 0 0 1-1-1v-8.5Z"></path></svg>Übersicht</button>
+          <button class="bottom-nav-item" type="button" data-view-target="accounts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16v10.8A1.7 1.7 0 0 1 18.3 20H5.7A1.7 1.7 0 0 1 4 18.3V7.5Z"></path><path d="M7 5h10a2 2 0 0 1 2 2.5H5A2 2 0 0 1 7 5Z"></path></svg>Geld</button>
+          <button class="bottom-nav-item" type="button" data-view-target="budgets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18.5V8.8a6 6 0 0 1 12 0v9.7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 18.5Z"></path><path d="M8.4 10.2h7.2M9 14h6"></path></svg>Budgets</button>
+          <button class="bottom-nav-item" type="button" data-view-target="transactions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h10a2 2 0 0 1 2 2v12l-2-1-2 1-2-1-2 1-2-1-2 1V7a2 2 0 0 1 2-2Z"></path><path d="M9 9h6M9 12h6M9 15h4"></path></svg>Buchungen</button>
+          <button class="bottom-nav-item" type="button" data-view-target="transactions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v14H5z"></path><path d="M8 3v5M16 3v5M5 10h14"></path></svg>Kalender</button>
+          <button class="bottom-nav-item" type="button" data-view-target="reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"></path><path d="M4 20h16"></path></svg>Analyse</button>
+          <button class="bottom-nav-item" type="button" data-view-target="more"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"></path></svg>Mehr</button>
+        </nav>
+        <div class="desktop-sidebar-footer">
+          <button class="bottom-nav-item" type="button" data-view-target="more">Einstellungen</button>
+          <button class="bottom-nav-item" type="button" data-view-target="more">Hilfe & Feedback</button>
+        </div>
+      </aside>
       <header class="topbar app-topbar">
-        <button class="round-action" type="button" aria-label="Info">i</button>
+        <div class="mobile-brand">BudgetUp</div>
         <div class="app-title-block">
           <p class="eyebrow">BudgetUp</p>
           <h1 id="viewTitle">Start</h1>
         </div>
         <button id="settingsButton" class="round-action settings-button" type="button" aria-label="Einstellungen">
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 8.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6Z"></path>
-            <path d="M19.1 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L13.8 2h-3.6l-.4 3.1a8.2 8.2 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 3.1h3.6l.4-3.1a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2.1-1.5Z"></path>
+            <path d="M18 9.7a6 6 0 0 0-12 0c0 5.2-2 5.9-2 7.3h16c0-1.4-2-2.1-2-7.3Z"></path>
+            <path d="M9.5 19a2.7 2.7 0 0 0 5 0"></path>
           </svg>
         </button>
       </header>
@@ -38,6 +57,10 @@
           <span>Monat</span>
           <input id="monthInput" type="month" tabindex="-1" />
         </label>
+        <div class="desktop-top-actions" aria-label="Datenaktionen">
+          <button class="secondary-button" type="button" data-more-action="import">Importieren</button>
+          <button class="secondary-button" type="button" data-more-action="export">Exportieren</button>
+        </div>
       </section>
 
       <section class="panel calendar-panel calendar-head-panel" aria-label="Monatskalender und Tagesauswahl">
@@ -60,6 +83,11 @@
           <span id="overviewMonthLabel">Aktueller Monat</span>
           <strong id="remainingValue">0,00 €</strong>
           <small>Bleibt am Monatsende</small>
+          <div class="hero-mini-totals" aria-label="Monatszahlen">
+            <span><b>Einnahmen</b><strong id="heroIncomeValue">0,00 €</strong></span>
+            <span><b>Ausgaben</b><strong id="heroExpenseValue">0,00 €</strong></span>
+            <span><b>Budget</b><strong id="heroBudgetValue">0,00 €</strong></span>
+          </div>
         </section>
         <section class="summary-grid overview-summary" aria-label="Monatsübersicht">
           <article class="metric income-metric" data-summary="income">
@@ -743,6 +771,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=90" defer></script>
+    <script src="app.js?v=91" defer></script>
   </body>
 </html>
