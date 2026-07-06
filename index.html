@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=94" />
+    <link rel="manifest" href="manifest.webmanifest?v=95" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=94" />
+    <link rel="stylesheet" href="styles.css?v=95" />
   </head>
   <body>
     <main class="app-shell">
@@ -323,47 +323,70 @@
       </section>
 
       <section class="app-view" data-view="reports" hidden>
-        <section class="insights-grid reports-grid" aria-label="Analyse">
-          <article class="insight-card">
-            <span>Top-Kategorien</span>
-            <div id="topCategoryList" class="insight-list"></div>
+        <section class="analysis-dashboard" aria-label="Analyse">
+          <article id="reportsDiagnosisCard" class="analysis-hero">
+            <span>Finanzlage</span>
+            <strong id="reportsDiagnosisTitle">Analyse wird geladen</strong>
+            <p id="reportsDiagnosisText">BudgetUp bewertet deinen Monat, deine Schuldenrate und deinen freien Puffer.</p>
+            <div class="analysis-hero-strip">
+              <span><b id="reportsCashValue">0,00 €</b><small>Monatspuffer</small></span>
+              <span><b id="reportsDailyValue">0,00 €</b><small>pro Resttag</small></span>
+            </div>
           </article>
-          <article class="insight-card">
-            <span>Wiederkehrend & Abos</span>
-            <div id="recurringInsightList" class="insight-list"></div>
-          </article>
-          <article class="insight-card">
-            <span>Einnahmen vs. Ausgaben</span>
-            <strong id="reportsRatioValue">0 %</strong>
-            <small id="reportsRatioHint">Ausgabenquote</small>
-          </article>
-          <article class="insight-card">
-            <span>Netto-Insight</span>
-            <strong id="reportsNetWorthValue">0,00 €</strong>
-            <small id="reportsNetWorthHint">Vermögen minus Schulden</small>
-          </article>
-          <article class="insight-card">
-            <span>Optimierung</span>
-            <div id="reportsOptimizationList" class="insight-list"></div>
-          </article>
-          <article class="insight-card">
-            <span>Häufige Ausgaben</span>
-            <div id="reportsFrequentList" class="insight-list"></div>
-          </article>
-          <article class="insight-card">
-            <span>Größte Zahlungen</span>
-            <div id="reportsLargestList" class="insight-list"></div>
-          </article>
-          <article class="insight-card">
-            <span>Offene Schulden</span>
-            <strong id="reportsDebtValue">0,00 €</strong>
-            <small id="reportsDebtHint">Verbindlichkeiten</small>
-          </article>
+          <div class="analysis-metric-grid">
+            <article class="insight-card analysis-card ratio-card">
+              <span>Ausgabenquote</span>
+              <div class="analysis-meter" aria-hidden="true"><i id="reportsRatioMeter"></i></div>
+              <strong id="reportsRatioValue">0 %</strong>
+              <small id="reportsRatioHint">Ausgabenquote</small>
+            </article>
+            <article class="insight-card analysis-card debt-card">
+              <span>Schuldenlast</span>
+              <strong id="reportsDebtValue">0,00 €</strong>
+              <small id="reportsDebtHint">Verbindlichkeiten</small>
+            </article>
+            <article class="insight-card analysis-card net-card">
+              <span>Nettovermögen</span>
+              <strong id="reportsNetWorthValue">0,00 €</strong>
+              <small id="reportsNetWorthHint">Vermögen minus Schulden</small>
+            </article>
+            <article class="insight-card analysis-card recurring-card">
+              <span>Fixe Kosten</span>
+              <div id="recurringInsightList" class="insight-list compact"></div>
+            </article>
+          </div>
+          <div class="analysis-focus-grid">
+            <article class="panel analysis-panel priority-panel">
+              <div class="panel-title">
+                <h2>Wichtig jetzt</h2>
+                <span class="mini-pill" id="reportsMonthMini">0 €</span>
+              </div>
+              <div id="reportsOptimizationList" class="analysis-action-list"></div>
+            </article>
+            <article class="panel analysis-panel">
+              <div class="panel-title">
+                <h2>Was treibt den Monat?</h2>
+              </div>
+              <div id="topCategoryList" class="insight-list"></div>
+            </article>
+            <article class="panel analysis-panel">
+              <div class="panel-title">
+                <h2>Auffällige Muster</h2>
+              </div>
+              <div id="reportsFrequentList" class="insight-list"></div>
+            </article>
+            <article class="panel analysis-panel">
+              <div class="panel-title">
+                <h2>Größte Zahlungen</h2>
+              </div>
+              <div id="reportsLargestList" class="insight-list"></div>
+            </article>
+          </div>
         </section>
-        <section class="panel">
+        <section class="panel analysis-trend-panel">
           <div class="panel-title">
             <h2>Monatsentwicklung</h2>
-            <span class="mini-pill" id="reportsMonthMini">0 €</span>
+            <span class="mini-pill">6 Monate</span>
           </div>
           <div id="reportsTrendList" class="summary-breakdown-list"></div>
         </section>
@@ -790,6 +813,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=94" defer></script>
+    <script src="app.js?v=95" defer></script>
   </body>
 </html>

@@ -203,6 +203,12 @@ const elements = {
   nextPaymentHint: document.querySelector("#nextPaymentHint"),
   weekSpendValue: document.querySelector("#weekSpendValue"),
   weekSpendHint: document.querySelector("#weekSpendHint"),
+  reportsDiagnosisCard: document.querySelector("#reportsDiagnosisCard"),
+  reportsDiagnosisTitle: document.querySelector("#reportsDiagnosisTitle"),
+  reportsDiagnosisText: document.querySelector("#reportsDiagnosisText"),
+  reportsCashValue: document.querySelector("#reportsCashValue"),
+  reportsDailyValue: document.querySelector("#reportsDailyValue"),
+  reportsRatioMeter: document.querySelector("#reportsRatioMeter"),
   reportsRatioValue: document.querySelector("#reportsRatioValue"),
   reportsRatioHint: document.querySelector("#reportsRatioHint"),
   reportsNetWorthValue: document.querySelector("#reportsNetWorthValue"),
@@ -1991,7 +1997,6 @@ function renderDebts() {
 
   elements.debtList.innerHTML = debts.map((debt) => {
     const remaining = remainingDebt(debt, month);
-    const outstandingNow = currentOutstandingDebt(debt);
     const paid = paidDebt(debt, month);
     const active = isDebtActiveInMonth(debt, month);
     const term = debt.termMonths || monthsFromDates(debt.startDate, debt.endDate);
@@ -2018,8 +2023,7 @@ function renderDebts() {
           ${badges ? `<div class="status-badges">${badges}</div>` : ""}
         </div>
         <div class="debt-numbers">
-          ${debtNumberLine("Restschuld", formatMoney.format(remaining), "remaining", "strong")}
-          ${debtNumberLine("Offen jetzt", formatMoney.format(outstandingNow), "open-now")}
+          ${debtNumberLine(`Offen ${formatMonthName(month)}`, formatMoney.format(remaining), "remaining", "strong")}
           ${debtNumberLine("Monatliche Rate", formatMoney.format(debt.monthlyPayment))}
           ${debtNumberLine("Bereits bezahlt", formatMoney.format(paid), "paid")}
           <div class="debt-progress-line">
@@ -2460,8 +2464,19 @@ function renderReports() {
   const insights = calculateInsightSummary(month);
   const summary = insights.summary;
   const ratio = summary.income > 0 ? Math.round((summary.expense / summary.income) * 100) : 0;
+  const daysLeft = daysLeftInMonth(month);
+  const daily = daysLeft > 0 ? summary.balance / daysLeft : summary.balance;
+  const diagnosis = analysisDiagnosis(summary, insights, ratio, daily);
+  elements.reportsDiagnosisCard.className = `analysis-hero ${diagnosis.tone}`;
+  elements.reportsDiagnosisTitle.textContent = diagnosis.title;
+  elements.reportsDiagnosisText.textContent = diagnosis.text;
+  elements.reportsCashValue.textContent = formatMoney.format(summary.balance);
+  elements.reportsDailyValue.textContent = formatMoney.format(daily);
   elements.reportsRatioValue.textContent = `${ratio} %`;
-  elements.reportsRatioHint.textContent = `${formatMoney.format(summary.expense)} von ${formatMoney.format(summary.income)} ausgegeben`;
+  elements.reportsRatioHint.textContent = summary.income > 0
+    ? `${formatMoney.format(summary.expense)} von ${formatMoney.format(summary.income)} genutzt`
+    : "noch keine Einnahmen im Monat";
+  elements.reportsRatioMeter.style.width = `${Math.min(100, Math.max(0, ratio))}%`;
   elements.reportsNetWorthValue.textContent = formatMoney.format(summary.netWorth);
   elements.reportsNetWorthHint.textContent = `${formatMoney.format(summary.totalAssets)} Vermögen · ${formatMoney.format(summary.totalDebt)} Schulden`;
   elements.reportsDebtValue.textContent = formatMoney.format(summary.totalDebt);
@@ -2470,8 +2485,8 @@ function renderReports() {
     : "keine aktiven Raten";
   elements.reportsMonthMini.textContent = formatMoney.format(summary.balance);
 
-  elements.reportsOptimizationList.innerHTML = optimizationInsights(insights)
-    .map((item) => insightLine(item.label, item.value, item.hint))
+  elements.reportsOptimizationList.innerHTML = actionInsights(insights, diagnosis)
+    .map((item, index) => actionInsightLine(item, index + 1))
     .join("") || `<p class="empty-state compact-empty">Noch zu wenig Daten für Hinweise.</p>`;
 
   const frequent = [...insights.byDescription.entries()]
@@ -2498,6 +2513,89 @@ function renderReports() {
       </article>
     `;
   }).join("");
+}
+
+function analysisDiagnosis(summary, insights, ratio, daily) {
+  if (summary.income <= 0 && summary.expense <= 0) {
+    return {
+      tone: "neutral",
+      title: "Noch keine Monatsdaten",
+      text: "Sobald Einnahmen und Ausgaben drin sind, zeigt BudgetUp dir hier die wichtigste Finanzlage.",
+    };
+  }
+  if (summary.balance < 0) {
+    const driver = insights.topCategory ? insights.topCategory[0] : "deine Ausgaben";
+    return {
+      tone: "danger",
+      title: "Dieser Monat ist überzogen",
+      text: `${formatMoney.format(Math.abs(summary.balance))} fehlen aktuell. Größter Treiber ist ${driver}; dort zuerst prüfen.`,
+    };
+  }
+  if (ratio >= 90 || daily < 10) {
+    return {
+      tone: "warning",
+      title: "Puffer ist knapp",
+      text: `${formatMoney.format(daily)} pro verbleibendem Tag. Halte neue Ausgaben klein und beobachte Fixkosten.`,
+    };
+  }
+  if (summary.debtMonthlyCost > 0 && summary.debtMonthlyCost > summary.income * 0.25) {
+    return {
+      tone: "warning",
+      title: "Schuldenrate drückt den Monat",
+      text: `${formatMoney.format(summary.debtMonthlyCost)} gehen in Raten. Prüfe, ob Sondertilgung oder Umsortierung hilft.`,
+    };
+  }
+  return {
+    tone: "good",
+    title: "Dieser Monat ist stabil",
+    text: `${formatMoney.format(summary.balance)} bleiben aktuell übrig. Der freie Tagespuffer liegt bei ${formatMoney.format(daily)}.`,
+  };
+}
+
+function actionInsights(insights, diagnosis) {
+  const rows = [];
+  if (diagnosis.tone === "danger") {
+    rows.push({ label: "Sofort prüfen", value: "Ausgaben stoppen", hint: "bis Monatsende nur Notwendiges eintragen" });
+  } else if (diagnosis.tone === "warning") {
+    rows.push({ label: "Beobachten", value: "Puffer schützen", hint: "kleine Ausgaben entscheiden jetzt viel" });
+  } else {
+    rows.push({ label: "Nächster Schritt", value: "Puffer halten", hint: "Überschuss nicht versehentlich ausgeben" });
+  }
+  if (insights.topCategory) {
+    rows.push({
+      label: "Größter Hebel",
+      value: insights.topCategory[0],
+      hint: `${formatMoney.format(insights.topCategory[1].amount)} in diesem Monat`,
+    });
+  }
+  if (insights.recurringCount) {
+    rows.push({
+      label: "Fixkosten",
+      value: formatMoney.format(insights.recurringTotal),
+      hint: `${insights.recurringCount} wiederkehrende Zahlung${insights.recurringCount === 1 ? "" : "en"}`,
+    });
+  }
+  const daily = daysLeftInMonth(elements.monthInput.value) > 0
+    ? insights.summary.balance / daysLeftInMonth(elements.monthInput.value)
+    : insights.summary.balance;
+  rows.push({
+    label: "Tagesbudget",
+    value: formatMoney.format(daily),
+    hint: daily >= 0 ? "freier Betrag pro Resttag" : "aktuelles Minus pro Resttag",
+  });
+  return rows.slice(0, 4);
+}
+
+function actionInsightLine(item, index) {
+  return `
+    <article class="analysis-action-row">
+      <b>${index}</b>
+      <span>
+        <strong>${escapeHtml(item.value)}</strong>
+        <small>${escapeHtml(item.label)} · ${escapeHtml(item.hint)}</small>
+      </span>
+    </article>
+  `;
 }
 
 function summaryTotals(month) {
@@ -4476,6 +4574,7 @@ function runBudgetUpSelfTest() {
     render();
     assert("Restgeld-Plan wird in der Übersicht gerendert", Boolean(elements.debtForecastList.querySelector(".forecast-row")), elements.debtForecastList.innerHTML);
     assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
+    assert("Schuldenzeile zeigt nur einen offenen Hauptbetrag", !elements.debtList.textContent.includes("Offen jetzt") && elements.debtList.textContent.includes("Offen Juni 2026"), elements.debtList.textContent);
     assert("Vermoegenszeile ist direkt bearbeitbar", Boolean(elements.assetList.querySelector('[data-row-edit-kind="asset"][data-row-edit-id="a-cash"]')), elements.assetList.innerHTML);
     selectedCalendarDay = "2026-06-03";
     renderCalendarDayList();
@@ -4570,6 +4669,10 @@ function runBudgetUpSelfTest() {
     assert("Fall A Faruk Tagesbilanz 01.06.", closeEnough(farukJuneDay.net, -924.85), JSON.stringify(farukJuneDay));
     assert("Fall A Faruk Monatssaldo", closeEnough(farukJune.balance, -724.85), JSON.stringify(farukJune));
     assert("Fall B Gesamt ohne alte Gesamt-Dubletten", closeEnough(totalJune.entryExpense, 4748.91), JSON.stringify(totalJune));
+    state.selectedPersonId = "case-test";
+    elements.monthInput.value = "2026-06";
+    renderReports();
+    assert("Analyse spricht Klartext statt Zahlenwand", elements.reportsDiagnosisTitle.textContent.includes("überzogen") && elements.reportsOptimizationList.querySelectorAll(".analysis-action-row").length >= 3, elements.reportsDiagnosisCard.textContent);
 
     state.entries.push(
       { id: "repeat-weekly", personId: "case-test", type: "expense", date: "2026-06-03", category: "Lebensmittel", description: "Lebensmittel wöchentlich", payment: "Karte", amount: 10, recurrence: "weekly", recurring: true, endDate: "", status: "open", updatedAt: 80 },
