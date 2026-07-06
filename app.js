@@ -177,6 +177,8 @@ const elements = {
   overviewDebtShortcutValue: document.querySelector("#overviewDebtShortcutValue"),
   overviewAssetShortcutHint: document.querySelector("#overviewAssetShortcutHint"),
   overviewDebtShortcutHint: document.querySelector("#overviewDebtShortcutHint"),
+  forecastRangeLabel: document.querySelector("#forecastRangeLabel"),
+  debtForecastList: document.querySelector("#debtForecastList"),
   overviewRecurringValue: document.querySelector("#overviewRecurringValue"),
   overviewRecurringHint: document.querySelector("#overviewRecurringHint"),
   accountsNetWorthValue: document.querySelector("#accountsNetWorthValue"),
@@ -822,6 +824,25 @@ function calculateMonthSummary(month, context = getActiveContext()) {
   const balance = income - expense;
   const netWorth = totalAssets - totalDebt;
   return { income, entryExpense, debtMonthlyCost, expense, balance, totalDebt, totalAssets, netWorth };
+}
+
+function monthlyForecast(month, context = getActiveContext(), months = 6) {
+  return Array.from({ length: months }, (_, index) => {
+    const forecastMonth = shiftMonth(month, index);
+    const summary = calculateMonthSummary(forecastMonth, context);
+    return {
+      month: forecastMonth,
+      label: formatMonthName(forecastMonth),
+      income: summary.income,
+      regularExpense: summary.entryExpense,
+      debtPayment: summary.debtMonthlyCost,
+      expense: summary.expense,
+      restMoney: summary.balance,
+      remainingDebt: summary.totalDebt,
+      totalAssets: summary.totalAssets,
+      netWorth: summary.netWorth,
+    };
+  });
 }
 
 function calculateInsightSummary(month, context = getActiveContext()) {
@@ -2181,7 +2202,45 @@ function renderSummary() {
   elements.netWorthValue.parentElement.classList.toggle("negative", netWorth < 0);
   renderMonthComparison(month);
   renderInsights(month, summary);
+  renderDebtForecast(month);
   if (activeSummaryType) renderSummaryBreakdown();
+}
+
+function renderDebtForecast(month) {
+  if (!elements.debtForecastList) return;
+  const rows = monthlyForecast(month, getActiveContext(), 6);
+  const hasMovement = rows.some((row) =>
+    [row.income, row.regularExpense, row.debtPayment, row.remainingDebt].some((value) => Math.abs(value) > 0.005)
+  );
+  if (elements.forecastRangeLabel) {
+    elements.forecastRangeLabel.textContent = `${formatMonthName(month)} + 5`;
+  }
+  if (!hasMovement) {
+    elements.debtForecastList.innerHTML = `<p class="empty-state compact-empty">Noch keine Daten für einen Restgeld-Plan.</p>`;
+    return;
+  }
+  elements.debtForecastList.innerHTML = rows.map((row, index) => {
+    const isCurrent = index === 0;
+    const restClass = row.restMoney >= 0 ? "positive-text" : "negative-text";
+    const paymentHint = row.debtPayment > 0
+      ? `${formatMoney.format(row.debtPayment)} Rate`
+      : "keine Rate";
+    return `
+      <article class="forecast-row${isCurrent ? " is-current" : ""}">
+        <div class="forecast-month">
+          <span>${escapeHtml(row.label)}</span>
+          <strong class="${restClass}">${formatMoney.format(row.restMoney)}</strong>
+          <small>${row.restMoney >= 0 ? "bleibt nach Kosten" : "fehlt nach Kosten"}</small>
+        </div>
+        <div class="forecast-values" aria-label="Berechnung für ${escapeHtml(row.label)}">
+          <span><b>Einn.</b>${formatMoney.format(row.income)}</span>
+          <span><b>Ausg.</b>${formatMoney.format(row.regularExpense)}</span>
+          <span><b>Raten</b>${paymentHint}</span>
+          <span><b>Restschuld</b>${formatMoney.format(row.remainingDebt)}</span>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderInsights(month, summary) {
@@ -4259,10 +4318,14 @@ function runBudgetUpSelfTest() {
     const finalDebtJuly = calculateMonthSummary("2026-07", debtContext);
     const finalDebtAugust = calculateMonthSummary("2026-08", debtContext);
     const finalDebtSeptember = calculateMonthSummary("2026-09", debtContext);
+    const finalDebtForecast = monthlyForecast("2026-06", debtContext, 4);
     assert("Schuldenrate reduziert Restschuld monatlich", finalDebtJune.debtMonthlyCost === 50 && finalDebtJune.totalDebt === 70 && finalDebtJuly.debtMonthlyCost === 50 && finalDebtJuly.totalDebt === 20, JSON.stringify({ finalDebtJune, finalDebtJuly }));
     assert("Letzte Schuldenrate wird auf Restbetrag begrenzt", finalDebtAugust.debtMonthlyCost === 20 && finalDebtAugust.totalDebt === 0 && finalDebtSeptember.debtMonthlyCost === 0 && finalDebtSeptember.totalDebt === 0, JSON.stringify({ finalDebtAugust, finalDebtSeptember }));
+    assert("Restgeld-Plan folgt Schuldenraten monatlich", finalDebtForecast[0].restMoney === -50 && finalDebtForecast[1].restMoney === -50 && finalDebtForecast[2].restMoney === -20 && finalDebtForecast[3].restMoney === 0, JSON.stringify(finalDebtForecast));
+    assert("Restgeld-Plan zeigt sinkende Restschuld", finalDebtForecast[0].remainingDebt === 70 && finalDebtForecast[1].remainingDebt === 20 && finalDebtForecast[2].remainingDebt === 0 && finalDebtForecast[3].remainingDebt === 0, JSON.stringify(finalDebtForecast));
     assert("Kalender zeigt letzte Schuldenrate nur mit Restbetrag", getCalendarDaySummary("2026-08-15", debtContext).debtExpense === 20, JSON.stringify(getCalendarDaySummary("2026-08-15", debtContext)));
     render();
+    assert("Restgeld-Plan wird in der Übersicht gerendert", Boolean(elements.debtForecastList.querySelector(".forecast-row")), elements.debtForecastList.innerHTML);
     assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
     assert("Vermoegenszeile ist direkt bearbeitbar", Boolean(elements.assetList.querySelector('[data-row-edit-kind="asset"][data-row-edit-id="a-cash"]')), elements.assetList.innerHTML);
     selectedCalendarDay = "2026-06-03";

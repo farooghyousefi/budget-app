@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=91" />
+    <link rel="manifest" href="manifest.webmanifest?v=92" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=91" />
+    <link rel="stylesheet" href="styles.css?v=92" />
   </head>
   <body>
     <main class="app-shell">
@@ -124,6 +124,16 @@
               <small id="overviewDebtShortcutHint">0 offene</small>
             </button>
           </div>
+        </section>
+        <section class="panel debt-forecast-panel" aria-label="Restgeld und Schuldenverlauf">
+          <div class="panel-title">
+            <div>
+              <span class="section-kicker">Monatsklarheit</span>
+              <h2>Restgeld-Plan</h2>
+            </div>
+            <span id="forecastRangeLabel" class="mini-pill">6 Monate</span>
+          </div>
+          <div id="debtForecastList" class="debt-forecast-list"></div>
         </section>
         <section class="overview-cards">
           <article class="insight-card">
@@ -771,6 +781,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=91" defer></script>
+    <script src="app.js?v=92" defer></script>
   </body>
 </html>
