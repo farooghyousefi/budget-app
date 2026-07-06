@@ -1567,6 +1567,11 @@ label.field-error select,
   color: var(--danger);
 }
 
+.debt-numbers .open-now,
+.debt-numbers .open-now > b {
+  color: #1d4ed8;
+}
+
 .empty-state {
   color: var(--muted);
   border: 1px dashed var(--line);
@@ -4016,6 +4021,46 @@ body::before {
 .debt-shortcut span,
 .debt-shortcut strong {
   color: #a35f10;
+}
+
+.debt-live-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(47, 125, 246, 0.18);
+  border-radius: 18px;
+  padding: 14px;
+  background: linear-gradient(145deg, #eef5ff 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.debt-live-summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.debt-live-summary strong {
+  color: #1d4ed8;
+  font-size: clamp(1.45rem, 5vw, 2rem);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+}
+
+.debt-live-summary small {
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.debt-live-summary.is-clear {
+  border-color: rgba(11, 143, 90, 0.18);
+  background: linear-gradient(145deg, #eaf8f0 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.debt-live-summary.is-clear strong {
+  color: var(--good);
 }
 
 .debt-forecast-panel {

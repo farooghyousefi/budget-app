@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=92" />
+    <link rel="manifest" href="manifest.webmanifest?v=93" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=92" />
+    <link rel="stylesheet" href="styles.css?v=93" />
   </head>
   <body>
     <main class="app-shell">
@@ -515,6 +515,10 @@
             </span>
           </label>
           <label data-debt-field>
+            <span>Bisher bezahlt bis</span>
+            <input id="paidThroughInput" type="month" autocomplete="off" />
+          </label>
+          <label data-debt-field>
             <span>Startdatum</span>
             <input id="debtStartInput" type="date" autocomplete="off" />
           </label>
@@ -583,6 +587,11 @@
               <span>€</span>
             </span>
           </label>
+          <div id="debtLiveSummary" class="debt-live-summary" data-debt-field aria-live="polite">
+            <span>Offen jetzt</span>
+            <strong>0,00 €</strong>
+            <small>Wird aus Gesamtschuld minus bisher bezahlt berechnet.</small>
+          </div>
         </div>
         <button class="submit-button" type="submit">Speichern</button>
         <div id="editModalActions" class="edit-modal-actions" hidden>
@@ -781,6 +790,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=92" defer></script>
+    <script src="app.js?v=93" defer></script>
   </body>
 </html>

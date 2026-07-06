@@ -122,6 +122,7 @@ const elements = {
   creditorInput: document.querySelector("#creditorInput"),
   debtTotalInput: document.querySelector("#debtTotalInput"),
   paidSoFarInput: document.querySelector("#paidSoFarInput"),
+  paidThroughInput: document.querySelector("#paidThroughInput"),
   debtPaymentInput: document.querySelector("#debtPaymentInput"),
   debtStartInput: document.querySelector("#debtStartInput"),
   debtEndInput: document.querySelector("#debtEndInput"),
@@ -133,6 +134,7 @@ const elements = {
   nominalRateInput: document.querySelector("#nominalRateInput"),
   termInput: document.querySelector("#termInput"),
   finalPaymentInput: document.querySelector("#finalPaymentInput"),
+  debtLiveSummary: document.querySelector("#debtLiveSummary"),
   normalFields: document.querySelectorAll("[data-normal-field]"),
   debtFields: document.querySelectorAll("[data-debt-field]"),
   formMessage: document.querySelector("#formMessage"),
@@ -441,6 +443,11 @@ elements.categoryDeleteButton.addEventListener("click", deleteActiveEditItem);
 [elements.amountInput, elements.debtTotalInput, elements.paidSoFarInput, elements.debtPaymentInput, elements.principalInput, elements.interestInput, elements.finalPaymentInput].forEach((input) => {
   input.addEventListener("blur", () => formatMoneyField(input));
   input.addEventListener("focus", () => input.select());
+});
+[elements.debtTotalInput, elements.paidSoFarInput, elements.debtPaymentInput, elements.debtStartInput, elements.debtEndInput, elements.paidThroughInput, elements.finalPaymentInput].forEach((input) => {
+  input?.addEventListener("input", updateDebtLiveSummary);
+  input?.addEventListener("change", updateDebtLiveSummary);
+  input?.addEventListener("blur", updateDebtLiveSummary);
 });
 elements.assetAmountInput.addEventListener("blur", () => formatMoneyField(elements.assetAmountInput));
 elements.assetAmountInput.addEventListener("focus", () => elements.assetAmountInput.select());
@@ -1326,6 +1333,7 @@ function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
   elements.paymentInput.value = "Karte";
   elements.dateInput.value = selectedCalendarDate();
   elements.debtStartInput.value = selectedCalendarDate();
+  elements.paidThroughInput.value = elements.monthInput.value || currentLocalMonth();
   elements.recurrenceInput.value = "none";
   elements.entryEndInput.value = "";
   elements.entryStatusInput.value = "open";
@@ -1335,6 +1343,7 @@ function resetForm({ showTypeChoice = formTypeChoiceVisible, type } = {}) {
   fillCategorySelect();
   setTypeChoiceVisible(showTypeChoice);
   syncFormMode();
+  updateDebtLiveSummary();
 }
 
 function saveDebtFromMainForm() {
@@ -1349,6 +1358,7 @@ function saveDebtFromMainForm() {
     elements.creditorInput.value,
     elements.debtTotalInput.value,
     elements.paidSoFarInput.value,
+    elements.paidThroughInput.value,
     elements.debtPaymentInput.value,
     elements.debtStartInput.value,
     elements.debtEndInput.value,
@@ -1380,6 +1390,7 @@ function saveDebtFromMainForm() {
     creditor: elements.creditorInput.value.trim(),
     totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
     paidSoFar: Number.isFinite(paidSoFar) ? paidSoFar : 0,
+    paidThroughMonth: normalizeMonthValue(elements.paidThroughInput.value) || elements.monthInput.value || currentLocalMonth(),
     monthlyPayment: Number.isFinite(monthlyPayment) ? monthlyPayment : 0,
     startDate: elements.debtStartInput.value,
     endDate: elements.debtEndInput.value,
@@ -1978,6 +1989,7 @@ function renderDebts() {
 
   elements.debtList.innerHTML = debts.map((debt) => {
     const remaining = remainingDebt(debt, month);
+    const outstandingNow = currentOutstandingDebt(debt);
     const paid = paidDebt(debt, month);
     const active = isDebtActiveInMonth(debt, month);
     const term = debt.termMonths || monthsFromDates(debt.startDate, debt.endDate);
@@ -2005,6 +2017,7 @@ function renderDebts() {
         </div>
         <div class="debt-numbers">
           ${debtNumberLine("Restschuld", formatMoney.format(remaining), "remaining", "strong")}
+          ${debtNumberLine("Offen jetzt", formatMoney.format(outstandingNow), "open-now")}
           ${debtNumberLine("Monatliche Rate", formatMoney.format(debt.monthlyPayment))}
           ${debtNumberLine("Bereits bezahlt", formatMoney.format(paid), "paid")}
           <div class="debt-progress-line">
@@ -2683,6 +2696,7 @@ function editDebt(id) {
   elements.creditorInput.value = debt.creditor;
   elements.debtTotalInput.value = formatMoneyInput(debt.totalAmount);
   elements.paidSoFarInput.value = formatMoneyInput(debt.paidSoFar || "");
+  elements.paidThroughInput.value = debtPaidThroughMonth(debt);
   elements.debtPaymentInput.value = formatMoneyInput(debt.monthlyPayment);
   elements.debtStartInput.value = debt.startDate;
   elements.debtEndInput.value = debt.endDate;
@@ -2695,6 +2709,7 @@ function editDebt(id) {
   elements.termInput.value = debt.termMonths || "";
   elements.finalPaymentInput.value = formatMoneyInput(debt.finalPayment || "");
   syncFormMode();
+  updateDebtLiveSummary();
 }
 
 function deleteDebt(id) {
@@ -3550,6 +3565,30 @@ function formatMoneyField(input) {
   input.value = formatMoneyInput(input.value);
 }
 
+function updateDebtLiveSummary() {
+  if (!elements.debtLiveSummary) return;
+  const total = parseMoneyInput(elements.debtTotalInput.value);
+  const paid = parseMoneyInput(elements.paidSoFarInput.value);
+  const monthly = parseMoneyInput(elements.debtPaymentInput.value);
+  const finalPayment = parseMoneyInput(elements.finalPaymentInput.value);
+  const safeTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
+  const safePaid = Number.isFinite(paid) ? Math.max(0, paid) : 0;
+  const remainingNow = Math.max(0, safeTotal - safePaid);
+  const safeMonthly = Number.isFinite(monthly) ? Math.max(0, monthly) : 0;
+  const payoffMonths = safeMonthly > 0 ? Math.ceil(remainingNow / safeMonthly) : 0;
+  const paidThrough = normalizeMonthValue(elements.paidThroughInput.value) || elements.monthInput.value || currentLocalMonth();
+  const projectedLastMonth = payoffMonths > 0 ? shiftMonth(paidThrough, payoffMonths) : paidThrough;
+  const finalText = Number.isFinite(finalPayment) && finalPayment > 0 ? ` · letzte Rate ${formatMoney.format(finalPayment)}` : "";
+
+  elements.debtLiveSummary.querySelector("strong").textContent = formatMoney.format(remainingNow);
+  elements.debtLiveSummary.querySelector("small").textContent = remainingNow > 0 && safeMonthly > 0
+    ? `${payoffMonths} Monat${payoffMonths === 1 ? "" : "e"} ab ${formatMonthName(shiftMonth(paidThrough, 1))}, voraussichtlich fertig ${formatMonthName(projectedLastMonth)}${finalText}.`
+    : remainingNow > 0
+      ? "Bitte monatliche Rate eintragen, damit BudgetUp den Verlauf fortschreiben kann."
+      : "Diese Schuld ist rechnerisch vollständig bezahlt.";
+  elements.debtLiveSummary.classList.toggle("is-clear", remainingNow <= 0);
+}
+
 function parsePercentInput(value) {
   const cleaned = String(value).trim().replace("%", "").replace(",", ".");
   if (!cleaned) return NaN;
@@ -3693,31 +3732,65 @@ function remainingDebt(debt, month) {
   return Math.max(0, Number(debt.totalAmount || 0) - paidDebt(debt, month));
 }
 
+function currentOutstandingDebt(debt) {
+  if (isDebtClosed(debt)) return 0;
+  return Math.max(0, Number(debt.totalAmount || 0) - Math.max(0, Number(debt.paidSoFar || 0)));
+}
+
 function paidDebt(debt, month) {
   if (monthToNumber(month) < debtStartMonthNumber(debt)) return 0;
   return Math.min(Number(debt.totalAmount || 0), paidDebtBeforeMonth(debt, month) + debtPaymentForMonth(debt, month));
 }
 
 function paidDebtBeforeMonth(debt, month) {
-  if (!debt.startDate || monthToNumber(month) < dateToMonthNumber(debt.startDate)) return Math.min(Number(debt.totalAmount || 0), Number(debt.paidSoFar || 0));
-  const cappedMonth = debt.endDate && monthToNumber(month) > dateToMonthNumber(debt.endDate) ? debt.endDate.slice(0, 7) : month;
-  const elapsedMonthsBeforeSelected = Math.max(0, monthsBetween(debt.startDate.slice(0, 7), cappedMonth));
-  const scheduledPaid = elapsedMonthsBeforeSelected * Number(debt.monthlyPayment || 0);
-  return Math.min(Number(debt.totalAmount || 0), Number(debt.paidSoFar || 0) + scheduledPaid);
+  const total = Number(debt.totalAmount || 0);
+  const basePaid = Math.min(total, Math.max(0, Number(debt.paidSoFar || 0)));
+  if (total <= 0) return 0;
+  if (monthToNumber(month) < debtStartMonthNumber(debt)) return 0;
+  const anchor = debtPaidThroughMonth(debt);
+  const selected = monthToNumber(month);
+  if (selected <= monthToNumber(anchor)) return basePaid;
+  const firstAutoMonth = debtFirstAutoPaymentMonth(debt, anchor);
+  if (selected <= monthToNumber(firstAutoMonth)) return basePaid;
+  const scheduledMonthsBeforeSelected = Math.max(0, monthsBetween(firstAutoMonth, month));
+  const scheduledPaid = scheduledMonthsBeforeSelected * Number(debt.monthlyPayment || 0);
+  return Math.min(total, basePaid + scheduledPaid);
 }
 
 function debtPaymentForMonth(debt, month) {
   if (!isDebtVisibleInMonth(debt, month) || isDebtClosed(debt)) return 0;
   const monthlyPayment = Number(debt.monthlyPayment || 0);
   if (monthlyPayment <= 0) return 0;
+  const firstAutoMonth = debtFirstAutoPaymentMonth(debt, debtPaidThroughMonth(debt));
+  if (monthToNumber(month) < monthToNumber(firstAutoMonth)) return 0;
   const remainingBeforeMonth = Math.max(0, Number(debt.totalAmount || 0) - paidDebtBeforeMonth(debt, month));
-  return Math.min(monthlyPayment, remainingBeforeMonth);
+  const finalPayment = debt.endDate && month === debt.endDate.slice(0, 7) && Number(debt.finalPayment || 0) > 0
+    ? Number(debt.finalPayment || 0)
+    : monthlyPayment;
+  return Math.min(finalPayment, remainingBeforeMonth);
 }
 
 function paidMonthsUntil(debt, month) {
   if (!debt.startDate || monthToNumber(month) < dateToMonthNumber(debt.startDate)) return 0;
-  const cappedMonth = debt.endDate && monthToNumber(month) > dateToMonthNumber(debt.endDate) ? debt.endDate.slice(0, 7) : month;
-  return Math.max(0, monthsBetween(debt.startDate.slice(0, 7), cappedMonth) + 1);
+  const anchor = debtPaidThroughMonth(debt);
+  if (monthToNumber(month) <= monthToNumber(anchor)) return 0;
+  const firstAutoMonth = debtFirstAutoPaymentMonth(debt, anchor);
+  if (monthToNumber(month) < monthToNumber(firstAutoMonth)) return 0;
+  return Math.max(0, monthsBetween(firstAutoMonth, month) + 1);
+}
+
+function debtPaidThroughMonth(debt) {
+  const explicit = normalizeMonthValue(debt.paidThroughMonth);
+  if (explicit) return explicit;
+  if (Number(debt.paidSoFar || 0) > 0) return elements.monthInput?.value || currentLocalMonth();
+  if (debt.startDate) return shiftMonth(debt.startDate.slice(0, 7), -1);
+  return elements.monthInput?.value || currentLocalMonth();
+}
+
+function debtFirstAutoPaymentMonth(debt, paidThroughMonth = debtPaidThroughMonth(debt)) {
+  const afterPaidThrough = shiftMonth(paidThroughMonth, 1);
+  const startMonth = debt.startDate ? debt.startDate.slice(0, 7) : afterPaidThrough;
+  return monthToNumber(startMonth) > monthToNumber(afterPaidThrough) ? startMonth : afterPaidThrough;
 }
 
 function isDebtActiveInMonth(debt, month) {
@@ -3869,6 +3942,13 @@ function monthsBetween(startMonth, endMonth) {
 function monthsFromDates(startDate, endDate) {
   if (!startDate || !endDate) return 0;
   return Math.max(0, monthsBetween(startDate.slice(0, 7), endDate.slice(0, 7)) + 1);
+}
+
+function normalizeMonthValue(value) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 7);
+  return "";
 }
 
 function monthToNumber(month) {
@@ -4092,6 +4172,7 @@ function normalizeDebt(debt) {
     creditor: debt.creditor || "",
     totalAmount: Number(debt.totalAmount || 0),
     paidSoFar: Number(debt.paidSoFar || 0),
+    paidThroughMonth: normalizeMonthValue(debt.paidThroughMonth) || (Number(debt.paidSoFar || 0) > 0 ? currentLocalMonth() : ""),
     monthlyPayment: Number(debt.monthlyPayment || 0),
     startDate: debt.startDate || (debt.startMonth ? monthToDate(debt.startMonth) : ""),
     endDate: debt.endDate || (debt.endMonth ? monthToDate(debt.endMonth) : ""),
@@ -4261,6 +4342,7 @@ function runBudgetUpSelfTest() {
       { id: "p1-test", name: "Test Person" },
       { id: "p2-test", name: "Andere Person" },
       { id: "debt-test", name: "Schulden Verlauf" },
+      { id: "iphone-test", name: "Faruk iPhone" },
       { id: "simple-test", name: "Einfacher Fall" },
       { id: "case-test", name: "Faruk" },
       { id: "case-copy", name: "Faruk Kopie" },
@@ -4279,9 +4361,10 @@ function runBudgetUpSelfTest() {
       { id: "e-other", personId: "p2-test", type: "expense", date: "2026-06-05", category: "Sonstiges", description: "Andere Person", payment: "Karte", amount: 999, recurring: false, endDate: "", status: "open", updatedAt: 5 },
     ];
     state.debts = [
-      { id: "d-open", personId: "p1-test", creditor: "Bank", totalAmount: 500, paidSoFar: 100, monthlyPayment: 50, startDate: "2026-06-03", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
+      { id: "d-open", personId: "p1-test", creditor: "Bank", totalAmount: 500, paidSoFar: 100, paidThroughMonth: "2026-05", monthlyPayment: 50, startDate: "2026-06-03", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
       { id: "d-paid", personId: "p1-test", creditor: "Paid Bank", totalAmount: 300, paidSoFar: 300, monthlyPayment: 30, startDate: "2026-06-03", endDate: "", status: "paid", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
       { id: "d-final", personId: "debt-test", creditor: "Final Rate", totalAmount: 120, paidSoFar: 0, monthlyPayment: 50, startDate: "2026-06-15", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
+      { id: "d-iphone", personId: "iphone-test", creditor: "IPHONE 15 PRO MAX 256GB, TITAN NATUR | 356388811386100, 18.02.2027", totalAmount: 1518.2, paidSoFar: 1182.2, paidThroughMonth: "2026-06", monthlyPayment: 42, startDate: "2024-02-18", endDate: "2027-02-18", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 1518.2, interestAmount: 0, nominalRate: 0, termMonths: 36, finalPayment: 42, note: "" },
     ];
     state.assets = [
       { id: "a-cash", personId: "p1-test", name: "Bargeld", amount: 200, note: "" },
@@ -4324,6 +4407,24 @@ function runBudgetUpSelfTest() {
     assert("Restgeld-Plan folgt Schuldenraten monatlich", finalDebtForecast[0].restMoney === -50 && finalDebtForecast[1].restMoney === -50 && finalDebtForecast[2].restMoney === -20 && finalDebtForecast[3].restMoney === 0, JSON.stringify(finalDebtForecast));
     assert("Restgeld-Plan zeigt sinkende Restschuld", finalDebtForecast[0].remainingDebt === 70 && finalDebtForecast[1].remainingDebt === 20 && finalDebtForecast[2].remainingDebt === 0 && finalDebtForecast[3].remainingDebt === 0, JSON.stringify(finalDebtForecast));
     assert("Kalender zeigt letzte Schuldenrate nur mit Restbetrag", getCalendarDaySummary("2026-08-15", debtContext).debtExpense === 20, JSON.stringify(getCalendarDaySummary("2026-08-15", debtContext)));
+    const iphoneContext = getActiveContext("iphone-test");
+    const iphoneDebt = state.debts.find((debt) => debt.id === "d-iphone");
+    const iphoneJuly = calculateMonthSummary("2026-07", iphoneContext);
+    const iphoneAugust = calculateMonthSummary("2026-08", iphoneContext);
+    const iphoneFebruary = calculateMonthSummary("2027-02", iphoneContext);
+    assert("iPhone offen jetzt aus Gesamtschuld minus bisher bezahlt", closeEnough(currentOutstandingDebt(iphoneDebt), 336), `openNow=${currentOutstandingDebt(iphoneDebt)}`);
+    assert("iPhone Juli Rate senkt Restschuld korrekt", closeEnough(iphoneJuly.debtMonthlyCost, 42) && closeEnough(iphoneJuly.totalDebt, 294), JSON.stringify(iphoneJuly));
+    assert("iPhone August schreibt Rate monatlich fort", closeEnough(iphoneAugust.debtMonthlyCost, 42) && closeEnough(iphoneAugust.totalDebt, 252), JSON.stringify(iphoneAugust));
+    assert("iPhone ist bis Februar 2027 vollständig getilgt", closeEnough(iphoneFebruary.debtMonthlyCost, 42) && closeEnough(iphoneFebruary.totalDebt, 0), JSON.stringify(iphoneFebruary));
+    const migratedOldDebt = normalizeDebt({ id: "legacy-phone", personId: "iphone-test", creditor: "Altbestand", totalAmount: 1518.2, paidSoFar: 1182.2, monthlyPayment: 42, startDate: "2024-02-18", status: "open" });
+    assert("Alte Schulden bekommen stabilen bezahlt-bis-Anker", migratedOldDebt.paidThroughMonth === currentLocalMonth(), JSON.stringify(migratedOldDebt));
+    elements.debtTotalInput.value = "1.518,20";
+    elements.paidSoFarInput.value = "1.182,20";
+    elements.paidThroughInput.value = "2026-06";
+    elements.debtPaymentInput.value = "42,00";
+    elements.finalPaymentInput.value = "42,00";
+    updateDebtLiveSummary();
+    assert("Schuldenformular zeigt Offen jetzt live", elements.debtLiveSummary.querySelector("strong").textContent.includes("336,00"), elements.debtLiveSummary.textContent);
     render();
     assert("Restgeld-Plan wird in der Übersicht gerendert", Boolean(elements.debtForecastList.querySelector(".forecast-row")), elements.debtForecastList.innerHTML);
     assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
@@ -4370,7 +4471,7 @@ function runBudgetUpSelfTest() {
     state.debts.push({ ...state.debts[0], id: "d-open-copy", personId: "p2-test", duplicateOf: "d-open" });
     state.assets.push({ ...state.assets[0], id: "a-cash-copy", personId: "p2-test", duplicateOf: "a-cash" });
     const familyBeforeDelete = calculateMonthSummary("2026-06", getActiveContext("all"));
-    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && familyBeforeDelete.totalDebt === 1220 && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
+    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && closeEnough(familyBeforeDelete.totalDebt, 1556) && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
     const editedCopy = preserveCopyTracking({ ...state.entries.find((entry) => entry.id === "case-income-copy"), amount: 2100 }, state.entries.find((entry) => entry.id === "case-income-copy"));
     assert("Bearbeiten bewahrt duplicateOf", editedCopy.duplicateOf === "case-income", JSON.stringify(editedCopy));
     assert("Fall D/E Kopien bleiben aus Gesamt heraus", calculateMonthSummary("2026-05", getActiveContext("case-copy")).income === 2000 && calculateMonthSummary("2026-05", getActiveContext("all")).totalAssets === 11199, JSON.stringify(calculateMonthSummary("2026-05", getActiveContext("all"))));
