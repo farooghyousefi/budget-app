@@ -797,6 +797,55 @@ function getBankConnections() {
   return Array.isArray(state.bankConnections) ? state.bankConnections : [];
 }
 
+function isDebtLikeEntry(entry) {
+  if (!entry || entry.type !== "expense") return false;
+  const text = normalizeComparableText([
+    entry.category,
+    entry.description,
+    entry.payment,
+    entry.note,
+  ].filter(Boolean).join(" "));
+  return /\b(schuld|schulden|kredit|kredite|darlehen|rate|raten|ratenzahlung|finanzierung|leasing|kreditkarte|rahmenkredit|targobank|targo|consors|sigma|check24)\b/.test(text);
+}
+
+function modeledDebtPaymentEntrySet(entries, month, context = getActiveContext()) {
+  const debts = getDebtsForMonth(month, context, { activeOnly: true })
+    .filter((debt) => debtPaymentForMonth(debt, month) > 0);
+  if (!debts.length) return new Set();
+  const matchedEntries = new Set();
+  const matchedDebts = new Set();
+  entries
+    .filter((entry) => entry.type === "expense" && isDebtLikeEntry(entry))
+    .forEach((entry) => {
+      const match = debts.find((debt) => !matchedDebts.has(debt.id) && debtPaymentEntryMatchesDebt(entry, debt, month));
+      if (!match) return;
+      matchedEntries.add(entry);
+      matchedDebts.add(match.id);
+    });
+  return matchedEntries;
+}
+
+function debtPaymentEntryMatchesDebt(entry, debt, month) {
+  const entryAmount = Number(entry.amount || 0);
+  const dueAmount = debtPaymentForMonth(debt, month);
+  if (!moneyClose(entryAmount, dueAmount) && !moneyClose(entryAmount, Number(debt.monthlyPayment || 0))) return false;
+  const entryText = normalizeComparableText([entry.description, entry.category, entry.payment].filter(Boolean).join(" "));
+  const debtTokens = financeTokens([debt.creditor, debt.account, debt.note, debt.paymentMethod].filter(Boolean).join(" "));
+  if (!entryText || !debtTokens.length) return false;
+  return debtTokens.some((token) => entryText.includes(token));
+}
+
+function financeTokens(value) {
+  const ignored = new Set(["bank", "kredit", "kredite", "rate", "raten", "konto", "zahlung", "lastschrift", "ueberweisung", "uberweisung"]);
+  return normalizeComparableText(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 4 && !ignored.has(token));
+}
+
+function moneyClose(a, b, tolerance = 0.01) {
+  return Math.abs(Number(a || 0) - Number(b || 0)) <= tolerance;
+}
+
 function calculateMoneyStructure(month, context = getActiveContext()) {
   const assets = getAssetsForContext(context);
   const debts = getDebtsForMonth(month, context);
@@ -826,7 +875,8 @@ function calculateMoneyStructure(month, context = getActiveContext()) {
 function calculateMonthSummary(month, context = getActiveContext()) {
   const monthEntries = getEntriesForMonth(month, context);
   const income = sum(monthEntries.filter((entry) => entry.type === "income"));
-  const entryExpense = sum(monthEntries.filter((entry) => entry.type === "expense"));
+  const modeledDebtPaymentEntries = modeledDebtPaymentEntrySet(monthEntries, month, context);
+  const entryExpense = sum(monthEntries.filter((entry) => entry.type === "expense" && !modeledDebtPaymentEntries.has(entry)));
   const debtMonthlyCost = getDebtsForMonth(month, context, { activeOnly: true })
     .reduce((total, debt) => total + debtPaymentForMonth(debt, month), 0);
   const totalDebt = getDebtsForMonth(month, context)
@@ -860,8 +910,10 @@ function monthlyForecast(month, context = getActiveContext(), months = 6) {
 
 function calculateInsightSummary(month, context = getActiveContext()) {
   const entries = getEntriesForMonth(month, context);
-  const expenses = entries.filter((entry) => entry.type === "expense");
-  const recurringExpenses = expenses.filter(isEntryRecurring);
+  const modeledDebtPaymentEntries = modeledDebtPaymentEntrySet(entries, month, context);
+  const expenses = entries.filter((entry) => entry.type === "expense" && !modeledDebtPaymentEntries.has(entry));
+  const fixedExpenses = expenses.filter((entry) => isEntryRecurring(entry) && !isDebtLikeEntry(entry));
+  const debtLikeExpenses = expenses.filter(isDebtLikeEntry);
   const byCategory = totalsBy(expenses, (entry) => entry.category || "Sonstiges");
   const byDescription = totalsBy(expenses, (entry) => entry.description || entry.category || "Ausgabe");
   const topCategory = topMapEntry(byCategory);
@@ -870,19 +922,26 @@ function calculateInsightSummary(month, context = getActiveContext()) {
     .slice()
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
     .slice(0, 3);
-  const recurringTotal = recurringExpenses.reduce((total, entry) => total + Number(entry.amount || 0), 0);
+  const fixedExpenseTotal = fixedExpenses.reduce((total, entry) => total + Number(entry.amount || 0), 0);
+  const debtLikeExpenseTotal = debtLikeExpenses.reduce((total, entry) => total + Number(entry.amount || 0), 0);
   const summary = calculateMonthSummary(month, context);
+  const debtPressure = summary.debtMonthlyCost + debtLikeExpenseTotal;
   return {
     entries,
     expenses,
+    fixedExpenses,
+    debtLikeExpenses,
     byCategory,
     byDescription,
     topCategory,
     topDescription,
     largestPayments,
-    recurringCount: recurringExpenses.length,
-    recurringTotal,
-    recurringShare: summary.expense > 0 ? Math.round((recurringTotal / summary.expense) * 100) : 0,
+    recurringCount: fixedExpenses.length,
+    recurringTotal: fixedExpenseTotal,
+    fixedExpenseTotal,
+    debtLikeExpenseTotal,
+    debtPressure,
+    recurringShare: summary.expense > 0 ? Math.round((fixedExpenseTotal / summary.expense) * 100) : 0,
     summary,
   };
 }
@@ -2264,13 +2323,13 @@ function renderDebtForecast(month) {
 
 function renderInsights(month, summary) {
   const monthEntries = getEntriesForMonth(month);
+  const modeledDebtPaymentEntries = modeledDebtPaymentEntrySet(monthEntries, month);
+  const monthExpenses = monthEntries.filter((entry) => entry.type === "expense" && !modeledDebtPaymentEntries.has(entry));
   const expenseByCategory = new Map();
-  monthEntries
-    .filter((entry) => entry.type === "expense")
-    .forEach((entry) => {
-      const key = entry.category || "Sonstiges";
-      expenseByCategory.set(key, (expenseByCategory.get(key) || 0) + Number(entry.amount || 0));
-    });
+  monthExpenses.forEach((entry) => {
+    const key = entry.category || "Sonstiges";
+    expenseByCategory.set(key, (expenseByCategory.get(key) || 0) + Number(entry.amount || 0));
+  });
 
   const topCategories = [...expenseByCategory.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -2279,20 +2338,20 @@ function renderInsights(month, summary) {
     ? topCategories.map(([name, amount]) => insightLine(name, formatMoney.format(amount))).join("")
     : `<p class="empty-state compact-empty">Keine Ausgaben in diesem Monat</p>`;
 
-  const recurringRows = monthEntries
-    .filter(isEntryRecurring)
+  const fixedExpenseRows = monthExpenses
+    .filter((entry) => isEntryRecurring(entry) && !isDebtLikeEntry(entry))
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
     .slice(0, 3);
-  const recurringTotal = monthEntries
-    .filter((entry) => isEntryRecurring(entry) && entry.type === "expense")
+  const fixedExpenseTotal = monthExpenses
+    .filter((entry) => isEntryRecurring(entry) && !isDebtLikeEntry(entry))
     .reduce((total, entry) => total + Number(entry.amount || 0), 0);
-  elements.overviewRecurringValue.textContent = formatMoney.format(recurringTotal);
-  elements.overviewRecurringHint.textContent = recurringRows.length
-    ? recurringRows.slice(0, 2).map((entry) => entry.description || entry.category).join(", ")
-    : "keine aktiven Abos";
-  elements.recurringInsightList.innerHTML = recurringRows.length
-    ? recurringRows.map((entry) => insightLine(entry.description || entry.category, formatMoney.format(entry.amount), entry.endDate ? `endet ${formatMonthName(entry.endDate.slice(0, 7))}` : "läuft weiter")).join("")
-    : `<p class="empty-state compact-empty">Keine Abos im aktuellen Monat</p>`;
+  elements.overviewRecurringValue.textContent = formatMoney.format(fixedExpenseTotal);
+  elements.overviewRecurringHint.textContent = fixedExpenseRows.length
+    ? fixedExpenseRows.slice(0, 2).map((entry) => entry.description || entry.category).join(", ")
+    : "keine fixen Ausgaben";
+  elements.recurringInsightList.innerHTML = fixedExpenseRows.length
+    ? fixedExpenseRows.map((entry) => insightLine(entry.description || entry.category, formatMoney.format(entry.amount), entry.endDate ? `endet ${formatMonthName(entry.endDate.slice(0, 7))}` : "läuft weiter")).join("")
+    : `<p class="empty-state compact-empty">Keine fixen Ausgaben im aktuellen Monat</p>`;
 
   const daysLeft = daysLeftInMonth(month);
   const dailyBudget = daysLeft > 0 ? summary.balance / daysLeft : summary.balance;
@@ -2307,7 +2366,7 @@ function renderInsights(month, summary) {
     ? `${formatMonthName(shiftMonth(month, 1))}: ${carryoverItems.slice(0, 2).map((item) => item.label).join(", ")}${carryoverItems.length > 2 ? " ..." : ""}`
     : `Keine offenen Übernahmen nach ${formatMonthName(shiftMonth(month, 1))}`;
 
-  const expenses = monthEntries.filter((entry) => entry.type === "expense");
+  const expenses = monthExpenses;
   const biggestExpense = expenses
     .slice()
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))[0];
@@ -2480,8 +2539,8 @@ function renderReports() {
   elements.reportsNetWorthValue.textContent = formatMoney.format(summary.netWorth);
   elements.reportsNetWorthHint.textContent = `${formatMoney.format(summary.totalAssets)} Vermögen · ${formatMoney.format(summary.totalDebt)} Schulden`;
   elements.reportsDebtValue.textContent = formatMoney.format(summary.totalDebt);
-  elements.reportsDebtHint.textContent = summary.debtMonthlyCost > 0
-    ? `${formatMoney.format(summary.debtMonthlyCost)} monatliche Raten`
+  elements.reportsDebtHint.textContent = insights.debtPressure > 0
+    ? `${formatMoney.format(insights.debtPressure)} Raten/Kreditbelastung im Monat`
     : "keine aktiven Raten";
   elements.reportsMonthMini.textContent = formatMoney.format(summary.balance);
 
@@ -2535,14 +2594,14 @@ function analysisDiagnosis(summary, insights, ratio, daily) {
     return {
       tone: "warning",
       title: "Puffer ist knapp",
-      text: `${formatMoney.format(daily)} pro verbleibendem Tag. Halte neue Ausgaben klein und beobachte Fixkosten.`,
+      text: `${formatMoney.format(daily)} pro verbleibendem Tag. Halte neue Ausgaben klein und beobachte fixe Ausgaben.`,
     };
   }
-  if (summary.debtMonthlyCost > 0 && summary.debtMonthlyCost > summary.income * 0.25) {
+  if (insights.debtPressure > 0 && insights.debtPressure > summary.income * 0.25) {
     return {
       tone: "warning",
       title: "Schuldenrate drückt den Monat",
-      text: `${formatMoney.format(summary.debtMonthlyCost)} gehen in Raten. Prüfe, ob Sondertilgung oder Umsortierung hilft.`,
+      text: `${formatMoney.format(insights.debtPressure)} gehen in Raten oder Kredite. Prüfe, ob Umsortierung oder Sondertilgung hilft.`,
     };
   }
   return {
@@ -2568,11 +2627,18 @@ function actionInsights(insights, diagnosis) {
       hint: `${formatMoney.format(insights.topCategory[1].amount)} in diesem Monat`,
     });
   }
+  if (insights.debtPressure > 0) {
+    rows.push({
+      label: "Raten & Kredite",
+      value: formatMoney.format(insights.debtPressure),
+      hint: "separat von normalen Fixausgaben bewertet",
+    });
+  }
   if (insights.recurringCount) {
     rows.push({
-      label: "Fixkosten",
+      label: "Fixe Ausgaben",
       value: formatMoney.format(insights.recurringTotal),
-      hint: `${insights.recurringCount} wiederkehrende Zahlung${insights.recurringCount === 1 ? "" : "en"}`,
+      hint: `${insights.recurringCount} wiederkehrende Ausgabe${insights.recurringCount === 1 ? "" : "n"}`,
     });
   }
   const daily = daysLeftInMonth(elements.monthInput.value) > 0
@@ -4626,6 +4692,27 @@ function runBudgetUpSelfTest() {
     deleteDebtLineageForTest("d-open-copy");
     deleteAssetLineageForTest("a-cash-copy");
     assert("Löschen entfernt Original und Kopien", !state.entries.some((entry) => sameLineage(entry, "e-expense")) && !state.debts.some((debt) => sameLineage(debt, "d-open")) && !state.assets.some((asset) => sameLineage(asset, "a-cash")), "lineage should be gone");
+
+    state.entries = [
+      { id: "analysis-income-recurring", personId: "case-test", type: "income", date: "2026-06-01", category: "Einnahmen", description: "Einnahme", payment: "Überweisung", amount: 2066, recurrence: "monthly", recurring: true, endDate: "2027-06-01", status: "open", updatedAt: 90 },
+      { id: "analysis-debt-recurring", personId: "case-test", type: "expense", date: "2026-06-01", category: "Schulden", description: "Targobank zweite Kredit Dauerauftrag", payment: "Lastschrift", amount: 1000, recurrence: "monthly", recurring: true, endDate: "", status: "open", updatedAt: 91 },
+      { id: "analysis-rent-recurring", personId: "case-test", type: "expense", date: "2026-06-01", category: "Wohnen", description: "Miete Einbecker", payment: "Lastschrift", amount: 477.4, recurrence: "monthly", recurring: true, endDate: "", status: "open", updatedAt: 92 },
+    ];
+    state.debts = [
+      { id: "analysis-modeled-debt", personId: "case-test", creditor: "Targobank Kredit", totalAmount: 500, paidSoFar: 0, monthlyPayment: 100, startDate: "2026-06-01", endDate: "", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 500, interestAmount: 0, nominalRate: 0, termMonths: 5, finalPayment: 100, note: "" },
+    ];
+    state.assets = [];
+    state.selectedPersonId = "case-test";
+    elements.monthInput.value = "2026-06";
+    render();
+    renderReports();
+    const fixedExpenseText = elements.recurringInsightList.textContent;
+    assert("Analyse Fixe Ausgaben ohne Einnahmen", !fixedExpenseText.includes("Einnahme") && !fixedExpenseText.includes("2.066"), fixedExpenseText);
+    assert("Analyse trennt Kreditraten von Fixausgaben", !fixedExpenseText.includes("Targobank") && fixedExpenseText.includes("Miete Einbecker"), fixedExpenseText);
+    assert("Analyse zeigt Kreditbewegungen separat", elements.reportsDebtHint.textContent.includes("1.100,00"), elements.reportsDebtHint.textContent);
+    state.entries.push({ id: "analysis-modeled-entry", personId: "case-test", type: "expense", date: "2026-06-01", category: "Schulden", description: "Targobank Kredit Rate", payment: "Lastschrift", amount: 100, recurrence: "monthly", recurring: true, endDate: "", status: "open", updatedAt: 93 });
+    const dedupedDebtMonth = calculateMonthSummary("2026-06", getActiveContext("case-test"));
+    assert("Passende Schuldenrate wird nicht doppelt gezählt", closeEnough(dedupedDebtMonth.debtMonthlyCost, 100) && closeEnough(dedupedDebtMonth.entryExpense, 1477.4) && closeEnough(dedupedDebtMonth.expense, 1577.4), JSON.stringify(dedupedDebtMonth));
 
     state.entries = [];
     state.debts = [];
