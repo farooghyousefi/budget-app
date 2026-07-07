@@ -852,6 +852,28 @@ label:has(select[required]) > span:first-child::after {
   pointer-events: none;
 }
 
+.debt-mode-field small,
+.manual-debt-warning {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.manual-debt-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  border: 1px dashed rgba(201, 147, 54, 0.35);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 248, 235, 0.72);
+}
+
+.manual-debt-warning {
+  color: #a35f10;
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -4424,6 +4446,38 @@ body::before {
   color: var(--muted);
   font-weight: 750;
   line-height: 1.4;
+}
+
+.debt-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.debt-preview-grid > div {
+  border: 1px solid rgba(47, 125, 246, 0.12);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.debt-preview-grid span {
+  display: block;
+  margin-bottom: 4px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.debt-preview-grid b {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.debt-warning-text,
+.debt-cashflow-hint.warning {
+  color: #a35f10;
 }
 
 .debt-live-summary.is-clear {

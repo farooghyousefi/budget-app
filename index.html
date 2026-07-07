@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=101" />
+    <link rel="manifest" href="manifest.webmanifest?v=102" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=101" />
+    <link rel="stylesheet" href="styles.css?v=102" />
   </head>
   <body>
     <main class="app-shell">
@@ -364,7 +364,7 @@
               <small id="reportsFreeAfterFixedHint">vor variablen Ausgaben</small>
             </article>
             <article class="insight-card analysis-card debt-card">
-              <span>Restschuld aktuell</span>
+              <span>Restschuld nach Monatsrate</span>
               <strong id="reportsDebtValue">0,00 €</strong>
               <small id="reportsDebtHint">Verbindlichkeiten</small>
             </article>
@@ -561,16 +561,13 @@
               <span>€</span>
             </span>
           </label>
-          <label data-debt-field>
-            <span>Bisher bezahlt</span>
-            <span class="money-input">
-              <input id="paidSoFarInput" inputmode="decimal" type="text" autocomplete="off" />
-              <span>€</span>
-            </span>
-          </label>
-          <label data-debt-field>
-            <span>Bisher bezahlt bis</span>
-            <input id="paidThroughInput" type="month" autocomplete="off" />
+          <label data-debt-field class="debt-mode-field">
+            <span>Berechnung</span>
+            <select id="debtCalculationModeInput">
+              <option value="auto_schedule">Automatisch nach Startdatum</option>
+              <option value="manual">Manuell überschreiben</option>
+            </select>
+            <small>BudgetUp berechnet bezahlt, offen und fertig automatisch aus Startdatum und Rate.</small>
           </label>
           <label data-debt-field>
             <span>Startdatum</span>
@@ -641,10 +638,30 @@
               <span>€</span>
             </span>
           </label>
+          <div id="manualDebtFields" class="manual-debt-fields" data-debt-field hidden>
+            <div class="manual-debt-warning">
+              Manuelle Werte überschreiben die automatische Berechnung.
+            </div>
+            <label>
+              <span>Bisher bezahlt</span>
+              <span class="money-input">
+                <input id="paidSoFarInput" inputmode="decimal" type="text" autocomplete="off" />
+                <span>€</span>
+              </span>
+            </label>
+            <label>
+              <span>Bisher bezahlt bis</span>
+              <input id="paidThroughInput" type="month" autocomplete="off" />
+            </label>
+            <label>
+              <span>Bezahlte Raten</span>
+              <input id="manualPaidInstallmentsInput" inputmode="numeric" type="number" min="0" autocomplete="off" />
+            </label>
+          </div>
           <div id="debtLiveSummary" class="debt-live-summary" data-debt-field aria-live="polite">
-            <span>Restschuld aktuell</span>
+            <span>Berechnung: Automatisch nach Startdatum</span>
             <strong>0,00 €</strong>
-            <small>Wird aus Gesamtschuld minus bisher bezahlt berechnet.</small>
+            <small>Startdatum, Gesamtschuld und Monatsrate eintragen.</small>
           </div>
         </div>
         <button class="submit-button" type="submit">Speichern</button>
@@ -844,6 +861,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=101" defer></script>
+    <script src="app.js?v=102" defer></script>
   </body>
 </html>
