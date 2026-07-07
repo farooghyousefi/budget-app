@@ -4873,6 +4873,65 @@ body {
   letter-spacing: -0.035em;
 }
 
+.analysis-card.income-card {
+  background: linear-gradient(145deg, #eefcf6 0%, #ffffff 86%);
+  border-color: rgba(22, 132, 95, 0.16);
+}
+
+.analysis-card.income-card strong {
+  color: var(--good);
+}
+
+.analysis-card.fixed-card {
+  background: linear-gradient(145deg, #f7faff 0%, #ffffff 82%);
+  border-color: rgba(59, 130, 246, 0.14);
+}
+
+.analysis-card.fixed-card strong {
+  color: #2563eb;
+}
+
+.analysis-card.debt-payment-card {
+  background: linear-gradient(145deg, #fff8eb 0%, #ffffff 84%);
+  border-color: rgba(180, 83, 9, 0.18);
+}
+
+.analysis-card.debt-payment-card strong {
+  color: #b45309;
+}
+
+.analysis-card.variable-card {
+  background: linear-gradient(145deg, #fff4f5 0%, #ffffff 84%);
+  border-color: rgba(239, 71, 92, 0.14);
+}
+
+.analysis-card.variable-card strong {
+  color: var(--danger);
+}
+
+.analysis-card.free-card {
+  background: linear-gradient(145deg, #eef8ff 0%, #ffffff 84%);
+  border-color: rgba(6, 95, 128, 0.14);
+}
+
+.analysis-card.free-card strong {
+  color: #0f6f8f;
+}
+
+.analysis-card.debt-card {
+  background: linear-gradient(145deg, var(--warning-soft) 0%, #ffffff 82%);
+  border-color: rgba(180, 83, 9, 0.18);
+}
+
+.analysis-card.debt-card strong {
+  color: #9a5a08;
+}
+
+.analysis-card.net-card {
+  background: linear-gradient(145deg, #f8fafc 0%, rgba(255, 255, 255, 0.96) 86%);
+  border-color: rgba(8, 22, 47, 0.08);
+}
+
 .quick-add-card {
   align-items: center;
   border-radius: 26px;

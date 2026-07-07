@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=96" />
+    <link rel="manifest" href="manifest.webmanifest?v=98" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=96" />
+    <link rel="stylesheet" href="styles.css?v=98" />
   </head>
   <body>
     <main class="app-shell">
@@ -334,14 +334,33 @@
             </div>
           </article>
           <div class="analysis-metric-grid">
-            <article class="insight-card analysis-card ratio-card">
-              <span>Ausgabenquote</span>
-              <div class="analysis-meter" aria-hidden="true"><i id="reportsRatioMeter"></i></div>
-              <strong id="reportsRatioValue">0 %</strong>
-              <small id="reportsRatioHint">Ausgabenquote</small>
+            <article class="insight-card analysis-card income-card">
+              <span>Einnahmen</span>
+              <strong id="reportsIncomeValue">0,00 €</strong>
+              <small id="reportsIncomeHint">echtes Geld, das reinkommt</small>
+            </article>
+            <article class="insight-card analysis-card fixed-card">
+              <span>Fixkosten</span>
+              <strong id="reportsFixedValue">0,00 €</strong>
+              <small id="reportsFixedHint">Miete, Abos, Verträge</small>
+            </article>
+            <article class="insight-card analysis-card debt-payment-card">
+              <span>Kreditraten</span>
+              <strong id="reportsDebtPaymentValue">0,00 €</strong>
+              <small id="reportsDebtPaymentHint">monatlicher Schuldendienst</small>
+            </article>
+            <article class="insight-card analysis-card variable-card">
+              <span>Variable Ausgaben</span>
+              <strong id="reportsVariableValue">0,00 €</strong>
+              <small id="reportsVariableHint">einmalige Ausgaben</small>
+            </article>
+            <article class="insight-card analysis-card free-card">
+              <span>Frei nach Fixkosten</span>
+              <strong id="reportsFreeAfterFixedValue">0,00 €</strong>
+              <small id="reportsFreeAfterFixedHint">vor variablen Ausgaben</small>
             </article>
             <article class="insight-card analysis-card debt-card">
-              <span>Schuldenlast</span>
+              <span>Restschuld aktuell</span>
               <strong id="reportsDebtValue">0,00 €</strong>
               <small id="reportsDebtHint">Verbindlichkeiten</small>
             </article>
@@ -350,36 +369,32 @@
               <strong id="reportsNetWorthValue">0,00 €</strong>
               <small id="reportsNetWorthHint">Vermögen minus Schulden</small>
             </article>
-            <article class="insight-card analysis-card recurring-card">
-              <span>Fixe Ausgaben</span>
-              <div id="recurringInsightList" class="insight-list compact"></div>
-            </article>
           </div>
           <div class="analysis-focus-grid">
             <article class="panel analysis-panel priority-panel">
               <div class="panel-title">
-                <h2>Wichtig jetzt</h2>
+                <h2>Was bedeutet das?</h2>
                 <span class="mini-pill" id="reportsMonthMini">0 €</span>
               </div>
               <div id="reportsOptimizationList" class="analysis-action-list"></div>
             </article>
             <article class="panel analysis-panel">
               <div class="panel-title">
-                <h2>Was treibt den Monat?</h2>
+                <h2>Größte Belastungen</h2>
               </div>
               <div id="topCategoryList" class="insight-list"></div>
+            </article>
+            <article class="panel analysis-panel">
+              <div class="panel-title">
+                <h2>Fixe Ausgaben</h2>
+              </div>
+              <div id="recurringInsightList" class="insight-list compact"></div>
             </article>
             <article class="panel analysis-panel">
               <div class="panel-title">
                 <h2>Auffällige Muster</h2>
               </div>
               <div id="reportsFrequentList" class="insight-list"></div>
-            </article>
-            <article class="panel analysis-panel">
-              <div class="panel-title">
-                <h2>Größte Zahlungen</h2>
-              </div>
-              <div id="reportsLargestList" class="insight-list"></div>
             </article>
           </div>
         </section>
@@ -498,6 +513,18 @@
             </select>
           </label>
           <label data-normal-field>
+            <span>Analyse-Typ</span>
+            <select id="classificationInput">
+              <option value="">Automatisch erkennen</option>
+              <option value="income">Einnahme</option>
+              <option value="fixed_expense">Fixkosten</option>
+              <option value="debt_payment">Kreditrate / Schuldenrate</option>
+              <option value="variable_expense">Variable Ausgabe</option>
+              <option value="transfer">Umbuchung / Transfer</option>
+              <option value="ignored">Nicht auswerten</option>
+            </select>
+          </label>
+          <label data-normal-field>
             <span>Wiederholung</span>
             <select id="recurrenceInput">
               <option value="none">Keine</option>
@@ -611,7 +638,7 @@
             </span>
           </label>
           <div id="debtLiveSummary" class="debt-live-summary" data-debt-field aria-live="polite">
-            <span>Offen jetzt</span>
+            <span>Restschuld aktuell</span>
             <strong>0,00 €</strong>
             <small>Wird aus Gesamtschuld minus bisher bezahlt berechnet.</small>
           </div>
@@ -813,6 +840,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=96" defer></script>
+    <script src="app.js?v=98" defer></script>
   </body>
 </html>
