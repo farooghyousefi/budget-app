@@ -1236,6 +1236,52 @@ label.field-error select,
   margin: 0 0 10px;
 }
 
+.entry-scope-toggle {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(241, 245, 249, 0.72);
+}
+
+.scope-toggle-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.scope-toggle-button.active {
+  background: var(--surface);
+  color: var(--brand);
+  box-shadow: var(--shadow-xs);
+}
+
+.scope-toggle-button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 2px;
+}
+
+.scope-toggle-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (min-width: 560px) {
+  .entry-scope-toggle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .list-panel {
   position: relative;
   overflow: visible;
@@ -1288,6 +1334,70 @@ label.field-error select,
 .entry-list {
   display: grid;
   gap: 8px;
+}
+
+.duplicate-rows-panel {
+  margin-top: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.duplicate-rows-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 12px 14px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 900;
+  cursor: pointer;
+  list-style: none;
+}
+
+.duplicate-rows-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.duplicate-rows-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.duplicate-row {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.duplicate-row span {
+  font-weight: 850;
+}
+
+.duplicate-row b {
+  color: var(--warning);
+}
+
+.duplicate-row small {
+  color: var(--muted);
+}
+
+.debt-cashflow-hint {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.07);
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .debt-list {

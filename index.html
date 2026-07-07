@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=98" />
+    <link rel="manifest" href="manifest.webmanifest?v=101" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=98" />
+    <link rel="stylesheet" href="styles.css?v=101" />
   </head>
   <body>
     <main class="app-shell">
@@ -310,6 +310,10 @@
             <div id="entryMenuPanel" class="list-actions entry-menu-panel" hidden>
               <button id="clearEntriesButton" class="secondary-button danger-button section-clear-button" type="button" title="Nur Buchungen leeren">Buchungen leeren</button>
             </div>
+          </div>
+          <div class="entry-scope-toggle" role="group" aria-label="Buchungszeitraum">
+            <button id="entryScopeMonthButton" class="scope-toggle-button active" type="button">Monat anzeigen</button>
+            <button id="entryScopeDayButton" class="scope-toggle-button" type="button">Nur ausgewählten Tag anzeigen</button>
           </div>
           <div id="entryList" class="entry-list"></div>
         </section>
@@ -840,6 +844,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=98" defer></script>
+    <script src="app.js?v=101" defer></script>
   </body>
 </html>

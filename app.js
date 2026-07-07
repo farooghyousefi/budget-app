@@ -161,6 +161,8 @@ const elements = {
   entryMenuPanel: document.querySelector("#entryMenuPanel"),
   filterInput: document.querySelector("#filterInput"),
   transactionSearchInput: document.querySelector("#transactionSearchInput"),
+  entryScopeMonthButton: document.querySelector("#entryScopeMonthButton"),
+  entryScopeDayButton: document.querySelector("#entryScopeDayButton"),
   entryList: document.querySelector("#entryList"),
   exportButton: document.querySelector("#exportButton"),
   importInput: document.querySelector("#importInput"),
@@ -287,6 +289,7 @@ let activeFormKey = "";
 let activeEditContext = null;
 let activeView = "overview";
 let selectedCalendarDay = localDateString(new Date());
+let entryListScope = "month";
 
 elements.monthInput.value = currentLocalMonth();
 elements.typeInput.value = "expense";
@@ -388,7 +391,24 @@ elements.filterInput.addEventListener("change", () => {
   closeEntryMenu();
 });
 elements.transactionSearchInput.addEventListener("input", renderEntries);
-elements.monthInput.addEventListener("change", render);
+elements.entryScopeMonthButton?.addEventListener("click", () => {
+  entryListScope = "month";
+  renderEntries();
+  renderDetailTitles();
+});
+elements.entryScopeDayButton?.addEventListener("click", () => {
+  const month = elements.monthInput.value || currentLocalMonth();
+  if (!selectedCalendarDay || selectedCalendarDay.slice(0, 7) !== month) selectedCalendarDay = monthToDate(month);
+  entryListScope = "day";
+  renderCalendar();
+  renderEntries();
+  renderDetailTitles();
+});
+elements.monthInput.addEventListener("change", () => {
+  selectedCalendarDay = null;
+  entryListScope = "month";
+  render();
+});
 elements.summaryCards.forEach((card) => {
   card.addEventListener("click", () => toggleSummaryBreakdown(card.dataset.summary));
 });
@@ -795,10 +815,23 @@ function getEntriesForMonth(month, context = getActiveContext()) {
 }
 
 function getDebtsForMonth(month, context = getActiveContext(), { activeOnly = false, visibleOnly = true } = {}) {
+  let debts = state.debts.filter((debt) => shouldIncludeItemInView(debt, context));
+  if (activeOnly) debts = debts.filter((debt) => debtPaymentForMonthCents(debt, month) > 0);
+  else if (visibleOnly) debts = debts.filter((debt) => debtObjectRemainingCents(debt, month) > 0);
+  return debts;
+}
+
+function getVisibleDebtObjects(context = getActiveContext(), month = elements.monthInput?.value || currentLocalMonth()) {
   return state.debts
     .filter((debt) => shouldIncludeItemInView(debt, context))
-    .filter((debt) => !visibleOnly || isDebtVisibleInMonth(debt, month))
-    .filter((debt) => !activeOnly || isDebtActiveInMonth(debt, month));
+    .filter((debt) => debtObjectRemainingCents(debt, month) > 0);
+}
+
+function getCashflowDebtPaymentRows(context = getActiveContext(), month = elements.monthInput?.value || currentLocalMonth()) {
+  return getDebtsForMonth(month, context, { activeOnly: true, visibleOnly: false })
+    .map((debt) => calculateDebtSchedule(debt, month))
+    .filter((schedule) => schedule.monthlyDueCents > 0)
+    .map((schedule) => buildCanonicalDebtRow(schedule, month));
 }
 
 function getAssetsForContext(context = getActiveContext()) {
@@ -930,8 +963,8 @@ function calculateDebtSchedule(debt, month) {
   const totalDebtCents = toCents(debt.totalAmount);
   const monthlyPaymentCents = toCents(debt.monthlyPayment);
   const lastPaymentCents = toCents(debt.finalPayment || debt.monthlyPayment);
-  const paidAmountCents = Math.min(totalDebtCents, paidDebtCents(debt, month));
-  const currentRemainingDebtCents = Math.max(0, totalDebtCents - paidAmountCents);
+  const currentRemainingDebtCents = debtObjectRemainingCents(debt, month);
+  const paidAmountCents = Math.min(totalDebtCents, Math.max(0, totalDebtCents - currentRemainingDebtCents));
   const monthlyDueCents = debtPaymentForMonthCents(debt, month);
   const progressPercent = totalDebtCents > 0 ? Math.min(100, Math.max(0, Math.round((paidAmountCents / totalDebtCents) * 100))) : 0;
   return {
@@ -955,51 +988,218 @@ function deriveRecurringTransactionInstances(month, context = getActiveContext()
   return getEntriesForMonth(month, context);
 }
 
-function calculateMonthlyAnalysis(month, context = getActiveContext()) {
+function canonicalOccurrenceKey(row) {
+  const entry = row.entry || {};
+  return [
+    entry.sourceId || entry.id || row.sourceId || row.id || "",
+    row.occurrenceDate || "",
+    row.amountCents || 0,
+    normalizeComparableText(row.label || entry.description || entry.category || ""),
+    row.type || entry.type || "",
+  ].join("|");
+}
+
+function stableVisibleRowKey(row) {
+  return [
+    row.sourceId || row.id || "",
+    row.occurrenceDate || "",
+    row.amountCents || 0,
+    normalizeComparableText(row.label || row.entry?.description || row.category || ""),
+    row.type || row.entry?.type || "",
+    row.cashflowCounted ? "counted" : "not-counted",
+  ].join("|");
+}
+
+function amountCentsClose(a, b, toleranceCents = 100) {
+  return Math.abs(Number(a || 0) - Number(b || 0)) <= toleranceCents;
+}
+
+function debtAmountToleranceCents(targetCents) {
+  return Math.max(1000, Math.round(Math.abs(Number(targetCents || 0)) * 0.03));
+}
+
+function buildCanonicalEntryRow(entry, month) {
+  const amountCents = toCents(entry.amount);
+  const classificationInfo = classifyTransaction(entry);
+  const occurrenceDate = entryOccurrenceDate(entry, month);
+  return {
+    kind: "entry",
+    source: "entry",
+    id: entry.id,
+    sourceId: entry.sourceId || entry.id,
+    type: entry.type || "expense",
+    entry,
+    label: entry.description || entry.category || "Buchung",
+    category: entry.category || "Sonstiges",
+    amountCents,
+    amount: fromCents(amountCents),
+    classification: classificationInfo.classification,
+    classificationSource: classificationInfo.source,
+    occurrenceDate,
+    cashflowCounted: true,
+    excludedFromCashflow: false,
+    duplicateReason: "",
+  };
+}
+
+function buildCanonicalDebtRow(schedule, month) {
+  const occurrenceDate = debtOccurrenceDate(schedule.debt, month);
+  return {
+    kind: "debt",
+    source: "generated-debt",
+    id: `debt-${schedule.debtId}-${month}`,
+    sourceId: schedule.debtId,
+    type: "expense",
+    entry: null,
+    debt: schedule.debt,
+    debtId: schedule.debtId,
+    label: schedule.label,
+    category: "Kreditraten",
+    amountCents: schedule.monthlyDueCents,
+    amount: fromCents(schedule.monthlyDueCents),
+    classification: "debt_payment",
+    classificationSource: "generated",
+    occurrenceDate,
+    cashflowCounted: true,
+    excludedFromCashflow: false,
+    duplicateReason: "",
+  };
+}
+
+function rowTextTokens(row) {
+  return financeTokens([row.label, row.category, row.entry?.payment, row.entry?.note].filter(Boolean).join(" "));
+}
+
+function rowMatchesDebt(row, debt, schedule, month) {
+  if (!row || row.classification !== "debt_payment") return false;
+  if (row.entry?.debtId && sameLineage(debt, row.entry.debtId)) return true;
+  const dueCents = schedule?.monthlyDueCents ?? debtPaymentForMonthCents(debt, month);
+  const tolerance = debtAmountToleranceCents(dueCents);
+  const amountMatches = amountCentsClose(row.amountCents, dueCents, tolerance)
+    || amountCentsClose(row.amountCents, monthlyDebtPaymentCents(debt), tolerance);
+  if (!amountMatches) return false;
+  const entryText = normalizeComparableText([row.label, row.category, row.entry?.payment].filter(Boolean).join(" "));
+  const debtTokens = financeTokens([debt.creditor, debt.account, debt.note, debt.paymentMethod].filter(Boolean).join(" "));
+  if (!entryText || !debtTokens.length) return false;
+  return debtTokens.some((token) => entryText.includes(token));
+}
+
+function rowGroupMatchesDebt(rows, debt, schedule, month) {
+  const dueCents = schedule?.monthlyDueCents ?? debtPaymentForMonthCents(debt, month);
+  if (dueCents <= 0) return [];
+  const debtTokens = financeTokens([debt.creditor, debt.account, debt.note, debt.paymentMethod].filter(Boolean).join(" "));
+  const candidates = rows.filter((row) => {
+    if (row.classification !== "debt_payment") return false;
+    const entryTokens = rowTextTokens(row);
+    return entryTokens.some((token) => debtTokens.includes(token)) || debtTokens.some((token) => entryTokens.includes(token));
+  });
+  if (!candidates.length) return [];
+  const exact = candidates.filter((row) => rowMatchesDebt(row, debt, schedule, month));
+  if (exact.length) return exact;
+  const sameDay = candidates.filter((row) => row.occurrenceDate === debtOccurrenceDate(debt, month));
+  const pool = sameDay.length ? sameDay : candidates;
+  const sum = pool.reduce((total, row) => total + row.amountCents, 0);
+  return amountCentsClose(sum, dueCents, debtAmountToleranceCents(dueCents)) ? pool : [];
+}
+
+function addRowToDayMap(dayMap, row) {
+  const date = row.occurrenceDate || "";
+  if (!date) return;
+  if (!dayMap[date]) {
+    dayMap[date] = {
+      incomeRows: [],
+      expenseRows: [],
+      countedRows: [],
+      duplicateRows: [],
+      incomeTotalCents: 0,
+      expenseTotalCents: 0,
+      balanceCents: 0,
+    };
+  }
+  const day = dayMap[date];
+  if (row.cashflowCounted) {
+    day.countedRows.push(row);
+    if (row.classification === "income") {
+      day.incomeRows.push(row);
+      day.incomeTotalCents += row.amountCents;
+    } else if (["fixed_expense", "debt_payment", "variable_expense"].includes(row.classification)) {
+      day.expenseRows.push(row);
+      day.expenseTotalCents += row.amountCents;
+    }
+    day.balanceCents = day.incomeTotalCents - day.expenseTotalCents;
+  } else if (row.duplicateReason) {
+    day.duplicateRows.push(row);
+  }
+}
+
+function calculateCanonicalMonth(month, context = getActiveContext()) {
   const entries = deriveRecurringTransactionInstances(month, context);
-  const duplicateDebtEntries = modeledDebtPaymentEntrySet(entries, month, context);
-  const duplicateDebtEntryKeys = new Set([...duplicateDebtEntries].map((entry) => debtPaymentEntryKey(entry, month)));
-  const debtSchedules = getDebtsForMonth(month, context).map((debt) => calculateDebtSchedule(debt, month));
-  const activeDebtSchedules = debtSchedules.filter((schedule) => schedule.monthlyDueCents > 0);
+  const debtSchedules = getVisibleDebtObjects(context, month).map((debt) => calculateDebtSchedule(debt, month));
+  const activeDebtSchedules = getDebtsForMonth(month, context, { activeOnly: true, visibleOnly: false })
+    .map((debt) => calculateDebtSchedule(debt, month))
+    .filter((schedule) => schedule.monthlyDueCents > 0);
+  const entryRows = entries.map((entry) => buildCanonicalEntryRow(entry, month));
   const rows = [];
+  const countedRows = [];
+  const duplicateRows = [];
+  const ignoredRows = [];
   let incomeTotalCents = 0;
   let fixedExpenseTotalCents = 0;
   let debtPaymentTransactionCents = 0;
   let variableExpenseTotalCents = 0;
   let transferTotalCents = 0;
   let ignoredTotalCents = 0;
+  const seenKeys = new Map();
 
-  entries.forEach((entry) => {
-    const amountCents = toCents(entry.amount);
-    const classificationInfo = classifyTransaction(entry);
-    const isDuplicateDebtPayment = isModeledDebtPaymentEntry(entry, duplicateDebtEntries, duplicateDebtEntryKeys, month);
-    const row = {
-      kind: "entry",
-      entry,
-      id: entry.id,
-      label: entry.description || entry.category || "Buchung",
-      category: entry.category || "Sonstiges",
-      amountCents,
-      amount: fromCents(amountCents),
-      classification: classificationInfo.classification,
-      classificationSource: classificationInfo.source,
-      occurrenceDate: entryOccurrenceDate(entry, month),
-      duplicateDebtPayment: isDuplicateDebtPayment,
-      excludedFromCashflow: isDuplicateDebtPayment || classificationInfo.classification === "transfer" || classificationInfo.classification === "ignored",
-    };
+  entryRows.forEach((row) => {
+    const key = canonicalOccurrenceKey(row);
+    if (seenKeys.has(key)) {
+      const original = seenKeys.get(key);
+      row.cashflowCounted = false;
+      row.excludedFromCashflow = true;
+      row.duplicateReason = `bereits durch ${original.label} enthalten`;
+      duplicateRows.push(row);
+      rows.push(row);
+      return;
+    }
+    seenKeys.set(key, row);
+    if (row.classification === "transfer" || row.classification === "ignored") {
+      row.cashflowCounted = false;
+      row.excludedFromCashflow = true;
+      ignoredRows.push(row);
+      if (row.classification === "transfer") transferTotalCents += row.amountCents;
+      else ignoredTotalCents += row.amountCents;
+      rows.push(row);
+      return;
+    }
     rows.push(row);
-    if (isDuplicateDebtPayment) return;
+    countedRows.push(row);
 
-    if (classificationInfo.classification === "income") incomeTotalCents += amountCents;
-    else if (classificationInfo.classification === "fixed_expense") fixedExpenseTotalCents += amountCents;
-    else if (classificationInfo.classification === "debt_payment") debtPaymentTransactionCents += amountCents;
-    else if (classificationInfo.classification === "variable_expense") variableExpenseTotalCents += amountCents;
-    else if (classificationInfo.classification === "transfer") transferTotalCents += amountCents;
-    else ignoredTotalCents += amountCents;
+    if (row.classification === "income") incomeTotalCents += row.amountCents;
+    else if (row.classification === "fixed_expense") fixedExpenseTotalCents += row.amountCents;
+    else if (row.classification === "debt_payment") debtPaymentTransactionCents += row.amountCents;
+    else if (row.classification === "variable_expense") variableExpenseTotalCents += row.amountCents;
   });
 
-  const modeledDebtPaymentTotalCents = activeDebtSchedules.reduce((total, schedule) => total + schedule.monthlyDueCents, 0);
-  const debtPaymentTotalCents = modeledDebtPaymentTotalCents + debtPaymentTransactionCents;
+  const generatedDebtRows = getCashflowDebtPaymentRows(context, month);
+  const countedDebtLikeRows = countedRows.filter((row) => row.classification === "debt_payment");
+  generatedDebtRows.forEach((row) => {
+    const schedule = activeDebtSchedules.find((item) => item.debtId === row.debtId) || calculateDebtSchedule(row.debt, month);
+    const matchRows = rowGroupMatchesDebt(countedDebtLikeRows, schedule.debt, schedule, month);
+    if (matchRows.length) {
+      row.cashflowCounted = false;
+      row.excludedFromCashflow = true;
+      row.duplicateReason = `bereits durch ${matchRows.map((item) => item.label).slice(0, 2).join(" + ")} enthalten`;
+      duplicateRows.push(row);
+      rows.push(row);
+      return;
+    }
+    rows.push(row);
+    countedRows.push(row);
+    debtPaymentTransactionCents += row.amountCents;
+  });
+
+  const debtPaymentTotalCents = debtPaymentTransactionCents;
   const totalMonthlyOutflowCents = fixedExpenseTotalCents + debtPaymentTotalCents + variableExpenseTotalCents;
   const monthlyBalanceCents = incomeTotalCents - totalMonthlyOutflowCents;
   const fixedAndDebtFreeCents = incomeTotalCents - fixedExpenseTotalCents - debtPaymentTotalCents;
@@ -1010,28 +1210,15 @@ function calculateMonthlyAnalysis(month, context = getActiveContext()) {
   const netWorthCents = assetTotalCents - debtBalanceTotalCents;
   const debtRatio = incomeTotalCents > 0 ? Math.round((debtPaymentTotalCents / incomeTotalCents) * 100) : 0;
 
-  const debtRows = activeDebtSchedules.map((schedule) => ({
-    kind: "debt",
-    id: `debt-${schedule.debtId}`,
-    label: schedule.label,
-    category: "Kreditraten",
-    amountCents: schedule.monthlyDueCents,
-    amount: fromCents(schedule.monthlyDueCents),
-    classification: "debt_payment",
-    occurrenceDate: debtOccurrenceDate(schedule.debt, month),
-    debtId: schedule.debtId,
-  }));
-  const cashflowRows = [
-    ...rows.filter((row) => !row.excludedFromCashflow && row.classification !== "income"),
-    ...debtRows,
-  ];
-  const outflowRows = cashflowRows
+  const incomeRows = countedRows.filter((row) => row.classification === "income");
+  const expenseRows = countedRows.filter((row) => ["fixed_expense", "debt_payment", "variable_expense"].includes(row.classification));
+  const outflowRows = expenseRows
     .filter((row) => ["fixed_expense", "debt_payment", "variable_expense"].includes(row.classification))
     .sort((a, b) => b.amountCents - a.amountCents);
   const topExpenseCategories = topRowsBy(outflowRows, (row) => row.category || "Sonstiges", 5);
   const topPayments = outflowRows.slice(0, 5);
   const warnings = [];
-  rows.forEach((row) => {
+  countedRows.forEach((row) => {
     if (row.classificationSource === "fallback" && row.kind === "entry" && isEntryRecurring(row.entry) && !row.entry.classification) {
       warnings.push(`Bitte pruefen: "${row.label}" wurde automatisch als ${classificationLabel(row.classification)} erkannt.`);
     }
@@ -1050,12 +1237,31 @@ function calculateMonthlyAnalysis(month, context = getActiveContext()) {
     warnings,
   });
 
+  const dayMap = {};
+  [...countedRows, ...duplicateRows].forEach((row) => addRowToDayMap(dayMap, row));
+  Object.values(dayMap).forEach((day) => {
+    day.countedRows.sort(canonicalRowSort);
+    day.incomeRows.sort(canonicalRowSort);
+    day.expenseRows.sort(canonicalRowSort);
+    day.duplicateRows.sort(canonicalRowSort);
+  });
+
   return {
+    month,
+    contextPersonId: context.id,
     selectedMonth: month,
+    incomeRows,
+    expenseRows,
+    countedRows: countedRows.sort(canonicalRowSort),
+    duplicateRows: duplicateRows.sort(canonicalRowSort),
+    ignoredRows,
+    generatedDebtRows,
+    dayMap,
     incomeTotalCents,
     fixedExpenseTotalCents,
     debtPaymentTotalCents,
     variableExpenseTotalCents,
+    expenseTotalCents: totalMonthlyOutflowCents,
     totalMonthlyOutflowCents,
     monthlyBalanceCents,
     dailyRemainingBudgetCents,
@@ -1068,11 +1274,15 @@ function calculateMonthlyAnalysis(month, context = getActiveContext()) {
     insights,
     topExpenseCategories,
     topPayments,
-    upcomingPayments: nextPaymentsForAnalysis(month, entries.filter((entry) => !isModeledDebtPaymentEntry(entry, duplicateDebtEntries, duplicateDebtEntryKeys, month)), activeDebtSchedules),
+    upcomingPayments: nextPaymentsForAnalysis(
+      month,
+      countedRows.filter((row) => row.kind === "entry").map((row) => row.entry),
+      activeDebtSchedules.filter((schedule) => generatedDebtRows.some((row) => row.debtId === schedule.debtId && row.cashflowCounted))
+    ),
     rows,
     outflowRows,
     debtSchedules,
-    duplicateDebtEntries,
+    duplicateDebtEntries: new Set(duplicateRows.filter((row) => row.kind === "entry").map((row) => row.entry)),
     transferTotalCents,
     ignoredTotalCents,
     income: fromCents(incomeTotalCents),
@@ -1086,6 +1296,20 @@ function calculateMonthlyAnalysis(month, context = getActiveContext()) {
     totalAssets: fromCents(assetTotalCents),
     netWorth: fromCents(netWorthCents),
   };
+}
+
+function canonicalRowSort(a, b) {
+  const dateDiff = String(b.occurrenceDate || "").localeCompare(String(a.occurrenceDate || ""));
+  if (dateDiff !== 0) return dateDiff;
+  const typeDiff = (a.classification === "income" ? -1 : 1) - (b.classification === "income" ? -1 : 1);
+  if (typeDiff !== 0) return typeDiff;
+  const amountDiff = Number(b.amountCents || 0) - Number(a.amountCents || 0);
+  if (amountDiff !== 0) return amountDiff;
+  return String(a.label || "").localeCompare(String(b.label || ""));
+}
+
+function calculateMonthlyAnalysis(month, context = getActiveContext()) {
+  return calculateCanonicalMonth(month, context);
 }
 
 function buildMonthlyInsights({ incomeTotalCents, fixedExpenseTotalCents, debtPaymentTotalCents, variableExpenseTotalCents, fixedAndDebtFreeCents, monthlyBalanceCents, topPayments, warnings }) {
@@ -1271,32 +1495,37 @@ function calculateBudgetUsage(month, context = getActiveContext()) {
 
 function getCalendarDaySummary(date, context = getActiveContext()) {
   const month = date.slice(0, 7);
-  const items = calendarItemsForDate(date, context);
-  const entries = items.filter((item) => item.kind !== "debt");
-  const monthEntries = getEntriesForMonth(month, context);
-  const duplicateDebtEntries = modeledDebtPaymentEntrySet(monthEntries, month, context);
-  const duplicateDebtEntryKeys = new Set([...duplicateDebtEntries].map((entry) => debtPaymentEntryKey(entry, month)));
-  const debtExpense = items
-    .filter((item) => item.kind === "debt")
-    .reduce((total, item) => total + Number(item.amount || 0), 0);
-  const income = entries
-    .filter((entry) => classifyTransaction(entry).classification === "income")
-    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
-  const entryExpense = entries
-    .filter((entry) => {
-      const classification = classifyTransaction(entry).classification;
-      return !isModeledDebtPaymentEntry(entry, duplicateDebtEntries, duplicateDebtEntryKeys, month) && ["fixed_expense", "debt_payment", "variable_expense"].includes(classification);
-    })
-    .reduce((total, entry) => total + Number(entry.amount || 0), 0);
-  const expense = entryExpense + debtExpense;
+  const canonical = calculateCanonicalMonth(month, context);
+  const day = canonical.dayMap[date] || {
+    incomeRows: [],
+    expenseRows: [],
+    countedRows: [],
+    duplicateRows: [],
+    incomeTotalCents: 0,
+    expenseTotalCents: 0,
+    balanceCents: 0,
+  };
+  const entryExpenseCents = day.expenseRows
+    .filter((row) => row.kind === "entry")
+    .reduce((total, row) => total + row.amountCents, 0);
+  const debtExpenseCents = day.expenseRows
+    .filter((row) => row.classification === "debt_payment")
+    .reduce((total, row) => total + row.amountCents, 0);
   return {
-    items,
-    income,
-    entryExpense,
-    debtExpense,
-    expense,
-    net: income - expense,
-    recurring: entries.some(isEntryRecurring),
+    items: day.countedRows,
+    rows: day.countedRows,
+    duplicateRows: day.duplicateRows,
+    incomeRows: day.incomeRows,
+    expenseRows: day.expenseRows,
+    incomeTotalCents: day.incomeTotalCents,
+    expenseTotalCents: day.expenseTotalCents,
+    balanceCents: day.balanceCents,
+    income: fromCents(day.incomeTotalCents),
+    entryExpense: fromCents(entryExpenseCents),
+    debtExpense: fromCents(debtExpenseCents),
+    expense: fromCents(day.expenseTotalCents),
+    net: fromCents(day.balanceCents),
+    recurring: day.countedRows.some((row) => row.entry && isEntryRecurring(row.entry)),
   };
 }
 
@@ -1953,13 +2182,19 @@ function renderDetailTitles() {
   const suffix = selectedPersonName();
   const month = elements.monthInput.value;
   const totals = calculateMonthSummary(month);
+  const scopeLabel = entryListScope === "day" && selectedCalendarDay?.slice(0, 7) === month
+    ? formatDateFull(selectedCalendarDay)
+    : formatMonthName(month);
   elements.debtTitle.textContent = `Schulden - ${suffix}`;
   elements.debtTotalMini.textContent = formatMoney.format(totals.totalDebt);
   elements.assetTitle.textContent = `Vermögen - ${suffix}`;
   elements.assetTotalMini.textContent = formatMoney.format(totals.totalAssets);
-  elements.entryTitle.textContent = `Einnahmen und Ausgaben - ${suffix}`;
-  elements.entryIncomeMini.textContent = `Einn. ${formatMoney.format(totals.income)}`;
-  elements.entryExpenseMini.textContent = `Ausg. ${formatMoney.format(totals.expense)}`;
+  const visibleTotals = entryListScope === "day" && selectedCalendarDay?.slice(0, 7) === month
+    ? getCalendarDaySummary(selectedCalendarDay)
+    : totals;
+  elements.entryTitle.textContent = `Einnahmen und Ausgaben - ${suffix} · ${scopeLabel}`;
+  elements.entryIncomeMini.textContent = `Einn. ${formatMoney.format(visibleTotals.income)}`;
+  elements.entryExpenseMini.textContent = `Ausg. ${formatMoney.format(visibleTotals.expense)}`;
 }
 
 function renderMoneyStructure() {
@@ -2248,47 +2483,55 @@ function renderEntries() {
   const month = elements.monthInput.value;
   const filter = elements.filterInput.value;
   const search = elements.transactionSearchInput.value.trim().toLowerCase();
-  const entries = getEntriesForMonth(month)
-    .filter((entry) => {
+  const canonical = calculateCanonicalMonth(month);
+  const activeDay = selectedCalendarDay?.slice(0, 7) === month ? selectedCalendarDay : monthToDate(month);
+  const sourceRows = entryListScope === "day"
+    ? (canonical.dayMap[activeDay]?.countedRows || [])
+    : canonical.countedRows;
+  const duplicateRows = entryListScope === "day"
+    ? (canonical.dayMap[activeDay]?.duplicateRows || [])
+    : canonical.duplicateRows;
+  const rows = sourceRows
+    .filter((row) => {
       if (filter === "all") return true;
-      if (filter === "recurring") return isEntryRecurring(entry);
-      if (filter === "open" || filter === "paid") return normalizeStatus(entry.status) === filter;
-      return entry.type === filter;
+      if (filter === "recurring") return row.entry ? isEntryRecurring(row.entry) : row.kind === "debt";
+      if (filter === "open" || filter === "paid") return normalizeStatus(row.entry?.status || row.debt?.status) === filter;
+      if (filter === "income") return row.classification === "income";
+      if (filter === "expense") return ["fixed_expense", "debt_payment", "variable_expense"].includes(row.classification);
+      return row.type === filter;
     })
-    .filter((entry) => {
+    .filter((row) => {
       if (!search) return true;
-      return [entry.description, entry.category, entry.payment, personName(entry.personId)]
+      return [row.label, row.category, row.entry?.payment, row.debt?.paymentMethod, personName(row.entry?.personId || row.debt?.personId)]
         .some((value) => String(value || "").toLowerCase().includes(search));
     })
-    .sort((a, b) => {
-      const dateDiff = entryOccurrenceDate(b, month).localeCompare(entryOccurrenceDate(a, month));
-      if (dateDiff !== 0) return dateDiff;
-      const diff = Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
-      if (diff !== 0) return diff;
-      if (a.type !== b.type) return a.type === "income" ? -1 : 1;
-      return (a.description || "").localeCompare(b.description || "");
-    });
+    .sort(canonicalRowSort);
 
-  if (!entries.length) {
-    elements.entryList.innerHTML = `<p class="empty-state">Keine passenden Buchungen für ${escapeHtml(selectedPersonName())} in diesem Monat.</p>`;
+  elements.entryScopeMonthButton?.classList.toggle("active", entryListScope === "month");
+  elements.entryScopeDayButton?.classList.toggle("active", entryListScope === "day");
+  elements.entryScopeDayButton?.toggleAttribute("disabled", !activeDay);
+
+  if (!rows.length) {
+    const scopeText = entryListScope === "day" ? `am ${formatDateFull(activeDay)}` : `in ${formatMonthName(month)}`;
+    elements.entryList.innerHTML = `<p class="empty-state">Keine passenden Buchungen für ${escapeHtml(selectedPersonName())} ${scopeText}.</p>`;
     return;
   }
 
-  elements.entryList.innerHTML = groupedTransactionHtml(entries, month);
+  elements.entryList.innerHTML = groupedCanonicalRowsHtml(rows, month) + duplicateRowsHtml(duplicateRows);
   wireEntryRowActions(elements.entryList);
 }
 
-function groupedTransactionHtml(entries, month) {
+function groupedCanonicalRowsHtml(rows, month) {
   const groups = new Map();
-  entries.forEach((entry) => {
-    const date = entryOccurrenceDate(entry, month);
+  rows.forEach((row) => {
+    const date = row.occurrenceDate || monthToDate(month);
     if (!groups.has(date)) groups.set(date, []);
-    groups.get(date).push(entry);
+    groups.get(date).push(row);
   });
   return [...groups.entries()].map(([date, rows]) => {
-    const net = rows.reduce((total, entry) => total + (entry.type === "income" ? Number(entry.amount || 0) : -Number(entry.amount || 0)), 0);
+    const netCents = rows.reduce((total, row) => total + (row.classification === "income" ? row.amountCents : -row.amountCents), 0);
     const dailyTotal = rows.length > 1
-      ? `<strong class="entry-day-total ${net >= 0 ? "positive-text" : "negative-text"}"><span>Tagesbilanz</span>${net >= 0 ? "+" : ""}${formatMoney.format(net)}</strong>`
+      ? `<strong class="entry-day-total ${netCents >= 0 ? "positive-text" : "negative-text"}"><span>Tagesbilanz</span>${netCents >= 0 ? "+" : ""}${formatMoneyCents(netCents)}</strong>`
       : "";
     return `
       <section class="entry-date-group">
@@ -2296,21 +2539,62 @@ function groupedTransactionHtml(entries, month) {
           <span>${formatDateFull(date)}</span>
           ${dailyTotal}
         </header>
-        ${rows.map((entry) => transactionRowHtml(entry, month)).join("")}
+        ${rows.map((row) => canonicalTransactionRowHtml(row, month)).join("")}
       </section>
     `;
   }).join("");
 }
 
-function transactionRowHtml(entry, monthOrDate) {
+function groupedTransactionHtml(entries, month) {
+  return groupedCanonicalRowsHtml(entries.map((entry) => buildCanonicalEntryRow(entry, month)), month);
+}
+
+function canonicalTransactionRowHtml(row, monthOrDate) {
+  if (row.kind === "debt") return calendarDebtRowHtml({
+    kind: "debt",
+    id: row.id,
+    sourceId: row.debtId,
+    type: "expense",
+    personId: row.debt?.personId,
+    date: row.occurrenceDate,
+    category: row.category,
+    description: row.label,
+    payment: row.debt?.paymentMethod || "Rate",
+    amount: row.amount,
+    rowKey: stableVisibleRowKey(row),
+  });
+  const entry = row.entry || row;
+  const badge = `<span class="status-badge status-recurring">${escapeHtml(classificationLabel(row.classification))}</span>`;
+  return transactionRowHtml({ ...entry, amount: row.amount, type: row.classification === "income" ? "income" : "expense" }, monthOrDate, badge, stableVisibleRowKey(row));
+}
+
+function duplicateRowsHtml(rows) {
+  if (!rows.length) return "";
+  return `
+    <details class="duplicate-rows-panel">
+      <summary>Nicht doppelt gezählt <strong>${rows.length}</strong></summary>
+      <div class="duplicate-rows-list">
+        ${rows.map((row) => `
+          <div class="duplicate-row">
+            <span>${escapeHtml(row.label)}</span>
+            <b>${formatMoneyCents(row.amountCents)}</b>
+            <small>${escapeHtml(row.duplicateReason || "Dublettenregel")}</small>
+          </div>
+        `).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function transactionRowHtml(entry, monthOrDate, extraBadges = "", rowKey = "") {
   const month = monthOrDate.length === 10 ? monthOrDate.slice(0, 7) : monthOrDate;
   const sign = entry.type === "income" ? "+" : "-";
   const title = entry.description || entry.category;
   const meta = [personName(entry.personId), entry.category, displayText(entry.payment)].filter(Boolean).join(" · ");
-  const badges = entryBadges(entry, month);
+  const badges = [entryBadges(entry, month), extraBadges].filter(Boolean).join("");
   const occurrence = monthOrDate.length === 10 ? monthOrDate : entryOccurrenceDate(entry, month);
   return `
-      <article class="entry-row ${entry.type} actionable-row" role="button" tabindex="0" data-row-edit-kind="entry" data-row-edit-id="${escapeHtml(entry.id)}">
+      <article class="entry-row ${entry.type} actionable-row" role="button" tabindex="0" data-row-edit-kind="entry" data-row-edit-id="${escapeHtml(entry.id)}" ${rowKey ? `data-row-key="${escapeHtml(rowKey)}"` : ""}>
       <time class="entry-date" datetime="${occurrence}">${formatDate(occurrence)}</time>
       <div class="entry-main">
         <div class="row-heading">
@@ -2369,8 +2653,12 @@ function wireEntryRowActions(root) {
 
 function renderDebts() {
   const month = elements.monthInput.value;
-  const debts = getDebtsForMonth(month)
+  const debts = getVisibleDebtObjects(getActiveContext(), month)
     .sort((a, b) => a.creditor.localeCompare(b.creditor));
+  const canonical = calculateCanonicalMonth(month);
+  const manualPaymentDebtIds = new Set(canonical.generatedDebtRows
+    .filter((row) => !row.cashflowCounted)
+    .map((row) => row.debtId));
 
   if (!debts.length) {
     elements.debtList.innerHTML = `<p class="empty-state">Keine Schulden für ${escapeHtml(selectedPersonName())} eingetragen.</p>`;
@@ -2378,12 +2666,15 @@ function renderDebts() {
   }
 
   elements.debtList.innerHTML = debts.map((debt) => {
-    const remaining = remainingDebt(debt, month);
-    const paid = paidDebt(debt, month);
-    const active = isDebtActiveInMonth(debt, month);
+    const remaining = debtObjectRemaining(debt, month);
+    const paid = Math.max(0, Number(debt.totalAmount || 0) - remaining);
+    const active = debtPaymentForMonthCents(debt, month) > 0;
     const term = debt.termMonths || monthsFromDates(debt.startDate, debt.endDate);
     const progress = debtProgressPercent(debt, month);
     const badges = debtBadges(debt, month, active);
+    const manualHint = manualPaymentDebtIds.has(debt.id)
+      ? `<small class="debt-cashflow-hint">Rate wird durch Buchung erfasst, nicht doppelt gezählt.</small>`
+      : "";
     const meta = [
       personName(debt.personId),
       debt.startDate || debt.endDate ? `${debt.startDate ? formatDateFull(debt.startDate) : "kein Start"} bis ${debt.endDate ? formatDateFull(debt.endDate) : "offen"}` : "",
@@ -2405,8 +2696,8 @@ function renderDebts() {
           ${badges ? `<div class="status-badges">${badges}</div>` : ""}
         </div>
         <div class="debt-numbers">
-          ${debtNumberLine(`Restschuld ${formatMonthName(month)}`, formatMoney.format(remaining), "remaining", "strong")}
-          ${debtNumberLine("Monatliche Rate", formatMoney.format(debt.monthlyPayment))}
+          ${debtNumberLine("Restschuld aktuell", formatMoney.format(remaining), "remaining", "strong")}
+          ${debtNumberLine("Rate im Monat", formatMoney.format(debtPaymentForMonth(debt, month)))}
           ${debtNumberLine("Bereits bezahlt", formatMoney.format(paid), "paid")}
           <div class="debt-progress-line">
             <span>Fortschritt</span>
@@ -2415,6 +2706,7 @@ function renderDebts() {
           <div class="debt-progress" aria-hidden="true">
             <span style="width: ${progress}%"></span>
           </div>
+          ${manualHint}
         </div>
       </article>
     `;
@@ -2431,7 +2723,8 @@ function debtNumberLine(label, value, className = "", tag = "span") {
 function debtProgressPercent(debt, month) {
   const total = Number(debt.totalAmount || 0);
   if (total <= 0) return 0;
-  return Math.min(100, Math.max(0, (paidDebt(debt, month) / total) * 100));
+  const paid = Math.max(0, total - debtObjectRemaining(debt, month));
+  return Math.min(100, Math.max(0, (paid / total) * 100));
 }
 
 function renderAssets() {
@@ -2706,8 +2999,7 @@ function insightLine(label, value, hint = "") {
 
 function renderCalendar() {
   const month = elements.monthInput.value;
-  const selectedMonth = selectedCalendarDay.slice(0, 7) === month ? selectedCalendarDay : monthToDate(month);
-  if (selectedCalendarDay.slice(0, 7) !== month) selectedCalendarDay = selectedMonth;
+  const activeSelectedDay = selectedCalendarDay?.slice(0, 7) === month ? selectedCalendarDay : "";
   elements.calendarTitle.textContent = formatMonthName(month);
   elements.calendarSubtitle.textContent = "Tage mit Buchungen werden hervorgehoben";
 
@@ -2725,7 +3017,7 @@ function renderCalendar() {
     const date = `${month}-${String(day).padStart(2, "0")}`;
     const totals = dailyTotals(date);
     const net = totals.income - totals.expense;
-    const isSelected = date === selectedCalendarDay;
+    const isSelected = date === activeSelectedDay;
     const isToday = date === localDateString(new Date());
     const weekday = new Date(`${date}T12:00:00`).getDay();
     const markers = [
@@ -2746,27 +3038,32 @@ function renderCalendar() {
   elements.calendarGrid.querySelectorAll("[data-calendar-day]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedCalendarDay = button.dataset.calendarDay;
+      entryListScope = "day";
       renderCalendar();
+      renderEntries();
+      renderDetailTitles();
     });
   });
   renderCalendarDayList();
 }
 
 function renderCalendarDayList() {
-  const daySummary = getCalendarDaySummary(selectedCalendarDay);
-  const items = daySummary.items
-    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-  const total = daySummary.net;
-  elements.calendarDayTitle.textContent = formatDateFull(selectedCalendarDay);
-  elements.calendarDayTotal.textContent = `${total >= 0 ? "+" : ""}${formatMoney.format(total)}`;
-  elements.calendarDayTotal.classList.toggle("income-pill", total >= 0);
-  elements.calendarDayTotal.classList.toggle("expense-pill", total < 0);
-  if (!items.length) {
-    elements.calendarDayList.innerHTML = `<p class="empty-state calendar-empty">Keine Buchungen an diesem Tag. Nutze +, wenn du etwas erfassen möchtest.</p>`;
+  if (!selectedCalendarDay) {
+    elements.calendarDayTitle.textContent = "Kein Tag ausgewählt";
+    elements.calendarDayTotal.textContent = "0,00 €";
+    elements.calendarDayTotal.classList.remove("income-pill", "expense-pill");
+    elements.calendarDayList.innerHTML = `<p class="empty-state calendar-empty">Wähle einen Kalendertag, um die Buchungsliste darauf zu filtern.</p>`;
     return;
   }
-  elements.calendarDayList.innerHTML = items.map((item) => item.kind === "debt" ? calendarDebtRowHtml(item) : transactionRowHtml(item, selectedCalendarDay)).join("");
-  wireEntryRowActions(elements.calendarDayList);
+  const daySummary = getCalendarDaySummary(selectedCalendarDay);
+  const total = daySummary.balanceCents;
+  elements.calendarDayTitle.textContent = formatDateFull(selectedCalendarDay);
+  elements.calendarDayTotal.textContent = `${total >= 0 ? "+" : ""}${formatMoneyCents(total)}`;
+  elements.calendarDayTotal.classList.toggle("income-pill", total >= 0);
+  elements.calendarDayTotal.classList.toggle("expense-pill", total < 0);
+  elements.calendarDayList.innerHTML = daySummary.items.length
+    ? `<p class="empty-state calendar-empty">Die Buchungen für diesen Tag stehen oben in der gefilterten Buchungsliste.</p>`
+    : `<p class="empty-state calendar-empty">Keine Buchungen an diesem Tag. Nutze +, wenn du etwas erfassen möchtest.</p>`;
 }
 
 function dailyTotals(date) {
@@ -2799,7 +3096,7 @@ function calendarItemsForDate(date, context = getActiveContext()) {
 function calendarDebtRowHtml(item) {
   const meta = [personName(item.personId), item.category, displayText(item.payment)].filter(Boolean).join(" · ");
   return `
-    <article class="entry-row debt-calendar expense actionable-row" role="button" tabindex="0" data-row-edit-kind="debt" data-row-edit-id="${escapeHtml(item.sourceId)}">
+    <article class="entry-row debt-calendar expense actionable-row" role="button" tabindex="0" data-row-edit-kind="debt" data-row-edit-id="${escapeHtml(item.sourceId)}" ${item.rowKey ? `data-row-key="${escapeHtml(item.rowKey)}"` : ""}>
       <time class="entry-date" datetime="${item.date}">${formatDate(item.date)}</time>
       <div class="entry-main">
         <div class="row-heading">
@@ -3111,7 +3408,7 @@ function debtSummaryRow(debt, amount, label) {
 }
 
 function activeDebts(month) {
-  return state.debts.filter((debt) => isDebtActiveInMonth(debt, month));
+  return getDebtsForMonth(month, getActiveContext(), { activeOnly: true });
 }
 
 function editEntry(id) {
@@ -4206,6 +4503,33 @@ function remainingDebt(debt, month) {
   return fromCents(remainingDebtCents(debt, month));
 }
 
+function debtObjectRemaining(debt, month) {
+  return fromCents(debtObjectRemainingCents(debt, month));
+}
+
+function scheduledPaymentForMonthIgnoringVisibilityCents(debt, month) {
+  if (isDebtClosed(debt)) return 0;
+  const monthlyPayment = monthlyDebtPaymentCents(debt);
+  if (monthlyPayment <= 0) return 0;
+  const firstAutoMonth = debtFirstAutoPaymentMonth(debt, debtPaidThroughMonth(debt));
+  if (monthToNumber(month) < monthToNumber(firstAutoMonth)) return 0;
+  const remainingBeforeMonth = Math.max(0, debtTotalCents(debt) - paidDebtBeforeMonthCents(debt, month));
+  const finalPayment = debt.endDate && month === debt.endDate.slice(0, 7) && toCents(debt.finalPayment) > 0
+    ? Math.max(0, toCents(debt.finalPayment))
+    : monthlyPayment;
+  return Math.min(finalPayment, remainingBeforeMonth);
+}
+
+function debtObjectRemainingCents(debt, month = elements.monthInput?.value || currentLocalMonth()) {
+  const total = debtTotalCents(debt);
+  if (total <= 0 || isDebtClosed(debt)) return 0;
+  if (monthToNumber(month) < debtStartMonthNumber(debt)) {
+    return Math.max(0, total - Math.min(total, normalizedDebtPaidSoFarCents(debt)));
+  }
+  const paidThroughMonth = Math.min(total, paidDebtBeforeMonthCents(debt, month) + scheduledPaymentForMonthIgnoringVisibilityCents(debt, month));
+  return Math.max(0, total - paidThroughMonth);
+}
+
 function currentOutstandingDebt(debt) {
   if (isDebtClosed(debt)) return 0;
   const paid = normalizedDebtPaidSoFarCents(debt);
@@ -4430,7 +4754,7 @@ function entryBadges(entry, month) {
 }
 
 function debtBadges(debt, month, active) {
-  const status = isDebtClosed(debt) || remainingDebt(debt, month) <= 0 ? (normalizeStatus(debt.status) === "ended" ? "ended" : "paid") : "open";
+  const status = isDebtClosed(debt) || debtObjectRemaining(debt, month) <= 0 ? (normalizeStatus(debt.status) === "ended" ? "ended" : "paid") : "open";
   return [
     statusBadge(statusLabel(status), `status-${status}`),
     active ? statusBadge("offen im Monat", "status-carry") : "",
@@ -4836,6 +5160,7 @@ function runBudgetUpSelfTest() {
   });
   const previousMonth = elements.monthInput.value;
   const previousSelectedCalendarDay = selectedCalendarDay;
+  const previousEntryListScope = entryListScope;
   const results = [];
   const assert = (name, condition, detail = "") => {
     results.push({ name, pass: Boolean(condition), detail });
@@ -4958,11 +5283,13 @@ function runBudgetUpSelfTest() {
     render();
     assert("Restgeld-Plan wird in der Übersicht gerendert", Boolean(elements.debtForecastList.querySelector(".forecast-row")), elements.debtForecastList.innerHTML);
     assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
-    assert("Schuldenzeile zeigt nur einen Restschuld-Hauptbetrag", !elements.debtList.textContent.includes(["Offen", "jetzt"].join(" ")) && elements.debtList.textContent.includes("Restschuld Juni 2026"), elements.debtList.textContent);
+    assert("Schuldenzeile zeigt nur einen Restschuld-Hauptbetrag", !elements.debtList.textContent.includes(["Offen", "jetzt"].join(" ")) && elements.debtList.textContent.includes("Restschuld aktuell"), elements.debtList.textContent);
     assert("Vermoegenszeile ist direkt bearbeitbar", Boolean(elements.assetList.querySelector('[data-row-edit-kind="asset"][data-row-edit-id="a-cash"]')), elements.assetList.innerHTML);
     selectedCalendarDay = "2026-06-03";
+    entryListScope = "day";
+    renderEntries();
     renderCalendarDayList();
-    assert("Kalender-Schuldenrate ist direkt bearbeitbar", Boolean(elements.calendarDayList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.calendarDayList.innerHTML);
+    assert("Kalender nutzt nur eine Buchungsliste", Boolean(elements.entryList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')) && !elements.calendarDayList.querySelector(".entry-row"), elements.entryList.innerHTML + elements.calendarDayList.innerHTML);
 
     const quickExpense = parseQuickAdd("12,50 Kaffee Lebensmittel", "expense", context, "2026-06");
     const quickIncome = parseQuickAdd("200 Upwork Einkommen", "income", context, "2026-06");
@@ -5087,6 +5414,81 @@ function runBudgetUpSelfTest() {
     renderReports();
     assert("Analyse spricht Klartext statt Zahlenwand", elements.reportsDiagnosisTitle.textContent.includes("Minus") && elements.reportsOptimizationList.querySelectorAll(".analysis-action-row").length >= 3, elements.reportsDiagnosisCard.textContent);
 
+    state.entries = [
+      { id: "aug-income-alg1", personId: "case-test", type: "income", date: "2026-08-01", category: "Einkommen", description: "Einnahme ALG1", payment: "Überweisung", amount: 2066, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 101 },
+      { id: "aug-income-roya", personId: "case-test", type: "income", date: "2026-08-28", category: "Einkommen", description: "Roya für die Wäschetrockner, habe selber bezahlt", payment: "Überweisung", amount: 200, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 102 },
+      { id: "aug-exp-iphone", personId: "case-test", type: "expense", date: "2026-08-18", category: "Schulden", description: "IPHONE 15 PRO MAX", payment: "Lastschrift", amount: 42, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 103 },
+      { id: "aug-exp-huck", personId: "case-test", type: "expense", date: "2026-08-01", category: "Versicherungen", description: "Huck Bahar Haftpflicht", payment: "Lastschrift", amount: 100, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 104 },
+      { id: "aug-exp-ing-tilgung", personId: "case-test", type: "expense", date: "2026-08-01", category: "Schulden", description: "ING Rahmenkredit Tilgung", payment: "Lastschrift", amount: 246, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 105 },
+      { id: "aug-exp-targo-30", personId: "case-test", type: "expense", date: "2026-08-01", category: "Schulden", description: "Targobank 30,000 EURo Kredit", payment: "Lastschrift", amount: 456.62, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 106 },
+      { id: "aug-exp-schufa", personId: "case-test", type: "expense", date: "2026-08-01", category: "Fixkosten", description: "Schufa Holding", payment: "Lastschrift", amount: 5, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 107 },
+      { id: "aug-exp-sigma", personId: "case-test", type: "expense", date: "2026-08-01", category: "Schulden", description: "SIGMA KREDITBANK AG", payment: "Lastschrift", amount: 232.7, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 108 },
+      { id: "aug-exp-kreditbest", personId: "case-test", type: "expense", date: "2026-08-01", category: "Schulden", description: "kreditBest check24", payment: "Lastschrift", amount: 97.32, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 109 },
+      { id: "aug-exp-vattenfall", personId: "case-test", type: "expense", date: "2026-08-01", category: "Fixkosten", description: "Vattenfall Strom Abschlag", payment: "Lastschrift", amount: 31.58, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 110 },
+      { id: "aug-exp-o2", personId: "case-test", type: "expense", date: "2026-08-01", category: "Fixkosten", description: "Telefónica O2 Faroogh Tarif", payment: "Lastschrift", amount: 27.99, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 111 },
+      { id: "aug-exp-rent", personId: "case-test", type: "expense", date: "2026-08-01", category: "Wohnen", description: "Miete Einbecker", payment: "Lastschrift", amount: 477.4, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 112 },
+      { id: "aug-exp-vodafone", personId: "case-test", type: "expense", date: "2026-08-01", category: "Abos", description: "Vodafone Kabel", payment: "Lastschrift", amount: 40, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 113 },
+      { id: "aug-exp-ing-zins", personId: "case-test", type: "expense", date: "2026-08-01", category: "Schulden", description: "ING Rahmenkredit Zins", payment: "Lastschrift", amount: 80, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 114 },
+      { id: "aug-exp-targo-second", personId: "case-test", type: "expense", date: "2026-08-01", category: "Schulden", description: "Targobank zweite Kredit Dauerauftrag", payment: "Lastschrift", amount: 1000, recurrence: "none", recurring: false, endDate: "", status: "open", updatedAt: 115 },
+    ];
+    state.debts = [
+      { id: "aug-debt-targo-30", personId: "case-test", creditor: "TargoBank 30K", totalAmount: 20000, paidSoFar: 0, monthlyPayment: 456.8, startDate: "2026-08-01", endDate: "", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 456.8, note: "" },
+      { id: "aug-debt-ing", personId: "case-test", creditor: "ING Rahmenkredit", totalAmount: 12500, paidSoFar: 0, monthlyPayment: 330, startDate: "2026-08-01", endDate: "", status: "open", paymentMethod: "Lastschrift", account: "ING", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 330, note: "" },
+      { id: "aug-debt-consors", personId: "case-test", creditor: "Consors Bank Rahmenkredit check24", totalAmount: 9308, paidSoFar: 0, monthlyPayment: 97.32, startDate: "2026-08-01", endDate: "", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 97.32, note: "" },
+      { id: "aug-debt-sigma", personId: "case-test", creditor: "Sigma Kreditbank", totalAmount: 7000, paidSoFar: 0, monthlyPayment: 232.7, startDate: "2026-08-01", endDate: "", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 232.7, note: "" },
+      { id: "aug-debt-targo-second", personId: "case-test", creditor: "Targobank 16500 EURO", totalAmount: 16500, paidSoFar: 0, monthlyPayment: 1000, startDate: "2026-08-01", endDate: "", status: "open", paymentMethod: "Lastschrift", account: "ING DiBA", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 1000, note: "" },
+      { id: "aug-debt-iphone", personId: "case-test", creditor: "IPHONE 15 PRO MAX", totalAmount: 1518.2, paidSoFar: 1182.2, paidThroughMonth: "2026-07", monthlyPayment: 42, startDate: "2024-02-18", endDate: "2027-02-18", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 1518.2, interestAmount: 0, nominalRate: 0, termMonths: 36, finalPayment: 42, note: "" },
+    ];
+    state.assets = [];
+    state.selectedPersonId = "case-test";
+    elements.monthInput.value = "2026-08";
+    selectedCalendarDay = "2026-08-01";
+    entryListScope = "month";
+    const augustContext = getActiveContext("case-test");
+    const augustDebtCountBefore = state.debts.length;
+    const augustCanonical = calculateCanonicalMonth("2026-08", augustContext);
+    const duplicateLabels = augustCanonical.duplicateRows.map((row) => `${row.label} ${formatMoneyCents(row.amountCents)}`).join(" | ");
+    assert("August 2026 kanonische Monatssummen", augustCanonical.incomeTotalCents === 226600 && augustCanonical.expenseTotalCents === 283661 && augustCanonical.monthlyBalanceCents === -57061, JSON.stringify(augustCanonical));
+    assert("August 2026 schliesst generierte Schuld-Dubletten aus", ["TargoBank 30K", "ING Rahmenkredit", "Consors Bank Rahmenkredit", "Sigma Kreditbank", "Targobank 16500 EURO", "IPHONE 15 PRO MAX"].every((label) => duplicateLabels.includes(label)) && augustCanonical.duplicateRows.every((row) => row.cashflowCounted === false), duplicateLabels);
+    const augustSummary = calculateMonthSummary("2026-08", augustContext);
+    assert("Übersicht folgt kanonischem August", augustSummary.incomeTotalCents === augustCanonical.incomeTotalCents && augustSummary.totalMonthlyOutflowCents === augustCanonical.expenseTotalCents && augustSummary.monthlyBalanceCents === augustCanonical.monthlyBalanceCents, JSON.stringify(augustSummary));
+    const augustInsight = calculateInsightSummary("2026-08", augustContext);
+    assert("Analyse folgt kanonischem August", augustInsight.analysis.totalMonthlyOutflowCents === 283661 && augustInsight.analysis.monthlyBalanceCents === -57061, JSON.stringify(augustInsight.analysis));
+    const augDay01 = getCalendarDaySummary("2026-08-01", augustContext);
+    const augDay18 = getCalendarDaySummary("2026-08-18", augustContext);
+    const augDay28 = getCalendarDaySummary("2026-08-28", augustContext);
+    assert("Kalender 01.08 nur Tageswerte", augDay01.incomeTotalCents === 206600 && augDay01.expenseTotalCents === 279461 && augDay01.balanceCents === -72861 && augDay01.items.every((row) => row.occurrenceDate === "2026-08-01"), JSON.stringify(augDay01));
+    assert("Kalender 18.08 nur iPhone", augDay18.incomeTotalCents === 0 && augDay18.expenseTotalCents === 4200 && augDay18.balanceCents === -4200 && augDay18.items.length === 1 && augDay18.items[0].label.includes("IPHONE"), JSON.stringify(augDay18));
+    assert("Kalender 28.08 nur Roya", augDay28.incomeTotalCents === 20000 && augDay28.expenseTotalCents === 0 && augDay28.balanceCents === 20000 && augDay28.items.length === 1 && augDay28.items[0].label.includes("Roya"), JSON.stringify(augDay28));
+    renderDetailTitles();
+    renderEntries();
+    assert("Buchungen Header folgt kanonischem Monat", elements.entryIncomeMini.textContent.includes("2.266,00") && elements.entryExpenseMini.textContent.includes("2.836,61"), elements.entryIncomeMini.textContent + " " + elements.entryExpenseMini.textContent);
+    assert("Buchungen Monat rendert 01.08-Gruppe einmal", (elements.entryList.innerHTML.match(/01\.08\.2026/g) || []).length === 1, elements.entryList.innerHTML);
+    const monthRowKeys = [...elements.entryList.querySelectorAll("[data-row-key]")].map((node) => node.dataset.rowKey);
+    assert("Buchungen Monat hat keine doppelten Row-Keys", monthRowKeys.length === new Set(monthRowKeys).size, monthRowKeys.join("\n"));
+    renderDebts();
+    const debtListText = elements.debtList.textContent;
+    const expectedDebtNames = ["TargoBank 30K", "Targobank 16500 EURO", "ING Rahmenkredit", "Sigma Kreditbank", "Consors Bank Rahmenkredit", "IPHONE 15 PRO MAX"];
+    assert("Schuldenliste zeigt alle echten Schulden trotz Cashflow-Dedupe", state.debts.length === augustDebtCountBefore && expectedDebtNames.every((name) => debtListText.includes(name)) && elements.debtList.querySelectorAll('[data-row-edit-kind="debt"]').length === expectedDebtNames.length, debtListText);
+    assert("Schulden-Hinweis zeigt manuelle Rate statt Doppelzählung", debtListText.includes("Rate wird durch Buchung erfasst, nicht doppelt gezählt."), debtListText);
+    entryListScope = "day";
+    selectedCalendarDay = "2026-08-01";
+    renderDetailTitles();
+    renderEntries();
+    assert("Buchungen Tagesfilter zeigt nur 01.08", elements.entryTitle.textContent.includes("01.08.2026") && elements.entryExpenseMini.textContent.includes("2.794,61") && !elements.entryList.textContent.includes("IPHONE") && !elements.entryList.textContent.includes("Roya"), elements.entryList.textContent);
+    const day01RowKeys = [...elements.entryList.querySelectorAll("[data-row-key]")].map((node) => node.dataset.rowKey);
+    assert("Buchungen Tag 01.08 hat keine doppelten Row-Keys", day01RowKeys.length === new Set(day01RowKeys).size, day01RowKeys.join("\n"));
+    selectedCalendarDay = "2026-08-18";
+    renderDetailTitles();
+    renderEntries();
+    assert("Buchungen Tagesfilter 18.08 zeigt nur iPhone", elements.entryTitle.textContent.includes("18.08.2026") && elements.entryExpenseMini.textContent.includes("42,00") && elements.entryList.textContent.includes("IPHONE") && !elements.entryList.textContent.includes("Roya") && !elements.entryList.textContent.includes("Miete Einbecker"), elements.entryList.textContent);
+    selectedCalendarDay = "2026-08-28";
+    renderDetailTitles();
+    renderEntries();
+    assert("Buchungen Tagesfilter 28.08 zeigt nur Roya", elements.entryTitle.textContent.includes("28.08.2026") && elements.entryIncomeMini.textContent.includes("200,00") && elements.entryList.textContent.includes("Roya") && !elements.entryList.textContent.includes("IPHONE") && !elements.entryList.textContent.includes("Miete Einbecker"), elements.entryList.textContent);
+    renderCalendarDayList();
+    assert("Kalender-Zweitliste rendert keine doppelten Buchungszeilen", !elements.calendarDayList.querySelector(".entry-row"), elements.calendarDayList.innerHTML);
+
     state.entries.push(
       { id: "repeat-weekly", personId: "case-test", type: "expense", date: "2026-06-03", category: "Lebensmittel", description: "Lebensmittel wöchentlich", payment: "Karte", amount: 10, recurrence: "weekly", recurring: true, endDate: "", status: "open", updatedAt: 80 },
       { id: "repeat-yearly", personId: "case-test", type: "expense", date: "2026-06-15", category: "Versicherungen", description: "Versicherung jährlich", payment: "Überweisung", amount: 120, recurrence: "yearly", recurring: true, endDate: "", status: "open", updatedAt: 81 },
@@ -5107,6 +5509,7 @@ function runBudgetUpSelfTest() {
     state.selectedPersonId = snapshot.selectedPersonId;
     elements.monthInput.value = previousMonth;
     selectedCalendarDay = previousSelectedCalendarDay;
+    entryListScope = previousEntryListScope;
     ensurePeople();
     render();
   }
