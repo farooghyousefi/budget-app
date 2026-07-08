@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BudgetUp" />
     <title>BudgetUp</title>
-    <link rel="manifest" href="manifest.webmanifest?v=102" />
+    <link rel="manifest" href="manifest.webmanifest?v=104" />
     <link rel="apple-touch-icon" href="icons/icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=102" />
+    <link rel="stylesheet" href="styles.css?v=104" />
   </head>
   <body>
     <main class="app-shell">
@@ -25,7 +25,7 @@
           <button class="bottom-nav-item" type="button" data-view-target="accounts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16v10.8A1.7 1.7 0 0 1 18.3 20H5.7A1.7 1.7 0 0 1 4 18.3V7.5Z"></path><path d="M7 5h10a2 2 0 0 1 2 2.5H5A2 2 0 0 1 7 5Z"></path></svg>Geld</button>
           <button class="bottom-nav-item" type="button" data-view-target="budgets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18.5V8.8a6 6 0 0 1 12 0v9.7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 18.5Z"></path><path d="M8.4 10.2h7.2M9 14h6"></path></svg>Budgets</button>
           <button class="bottom-nav-item" type="button" data-view-target="transactions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h10a2 2 0 0 1 2 2v12l-2-1-2 1-2-1-2 1-2-1-2 1V7a2 2 0 0 1 2-2Z"></path><path d="M9 9h6M9 12h6M9 15h4"></path></svg>Buchungen</button>
-          <button class="bottom-nav-item" type="button" data-view-target="transactions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v14H5z"></path><path d="M8 3v5M16 3v5M5 10h14"></path></svg>Kalender</button>
+          <button class="bottom-nav-item" type="button" data-view-target="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v14H5z"></path><path d="M8 3v5M16 3v5M5 10h14"></path></svg>Kalender</button>
           <button class="bottom-nav-item" type="button" data-view-target="reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"></path><path d="M4 20h16"></path></svg>Analyse</button>
           <button class="bottom-nav-item" type="button" data-view-target="more"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"></path></svg>Mehr</button>
         </nav>
@@ -61,19 +61,6 @@
           <button class="secondary-button" type="button" data-more-action="import">Importieren</button>
           <button class="secondary-button" type="button" data-more-action="export">Exportieren</button>
         </div>
-      </section>
-
-      <section class="panel calendar-panel calendar-head-panel" aria-label="Monatskalender und Tagesauswahl">
-        <div class="panel-title calendar-title-row">
-          <button id="calendarPrevButton" class="icon-button" type="button" aria-label="Vorheriger Monat">‹</button>
-          <div>
-            <h2 id="calendarTitle">Kalender im Monat</h2>
-            <span id="calendarSubtitle">Nur Tage mit Geldbewegung werden hervorgehoben</span>
-          </div>
-          <button id="calendarNextButton" class="icon-button" type="button" aria-label="Nächster Monat">›</button>
-        </div>
-        <button id="calendarTodayButton" class="secondary-button calendar-today-button" type="button">Heute</button>
-        <div id="calendarGrid" class="calendar-grid"></div>
       </section>
 
       <p id="formMessage" class="form-message app-toast" role="status"></p>
@@ -287,6 +274,28 @@
         </section>
       </section>
 
+      <section class="app-view" data-view="calendar" hidden>
+        <section class="panel calendar-panel calendar-head-panel" aria-label="Monatskalender und Tagesauswahl">
+          <div class="panel-title calendar-title-row">
+            <button id="calendarPrevButton" class="icon-button" type="button" aria-label="Vorheriger Monat">‹</button>
+            <div>
+              <h2 id="calendarTitle">Kalender im Monat</h2>
+              <span id="calendarSubtitle">Nur Tage mit Geldbewegung werden hervorgehoben</span>
+            </div>
+            <button id="calendarNextButton" class="icon-button" type="button" aria-label="Nächster Monat">›</button>
+          </div>
+          <button id="calendarTodayButton" class="secondary-button calendar-today-button" type="button">Heute</button>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-title">
+            <h2 id="calendarDayTitle">Ausgewählter Tag</h2>
+            <span id="calendarDayTotal" class="mini-pill">0 €</span>
+          </div>
+          <div id="calendarDayList" class="entry-list"></div>
+        </section>
+      </section>
+
       <section class="app-view" data-view="transactions" hidden>
         <section class="panel list-panel">
           <div class="panel-title list-title">
@@ -316,13 +325,6 @@
             <button id="entryScopeDayButton" class="scope-toggle-button" type="button">Nur ausgewählten Tag anzeigen</button>
           </div>
           <div id="entryList" class="entry-list"></div>
-        </section>
-        <section class="panel">
-          <div class="panel-title">
-            <h2 id="calendarDayTitle">Ausgewählter Tag</h2>
-            <span id="calendarDayTotal" class="mini-pill">0 €</span>
-          </div>
-          <div id="calendarDayList" class="entry-list"></div>
         </section>
       </section>
 
@@ -364,7 +366,7 @@
               <small id="reportsFreeAfterFixedHint">vor variablen Ausgaben</small>
             </article>
             <article class="insight-card analysis-card debt-card">
-              <span>Restschuld nach Monatsrate</span>
+              <span>Bestätigte Restschuld</span>
               <strong id="reportsDebtValue">0,00 €</strong>
               <small id="reportsDebtHint">Verbindlichkeiten</small>
             </article>
@@ -459,8 +461,8 @@
       <button class="bottom-nav-item" type="button" data-view-target="accounts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16v10.8A1.7 1.7 0 0 1 18.3 20H5.7A1.7 1.7 0 0 1 4 18.3V7.5Z"></path><path d="M7 5h10a2 2 0 0 1 2 2.5H5A2 2 0 0 1 7 5Z"></path><path d="M15.5 13H19v3h-3.5a1.5 1.5 0 0 1 0-3Z"></path></svg>Geld</button>
       <button class="bottom-nav-item" type="button" data-view-target="budgets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18.5V8.8a6 6 0 0 1 12 0v9.7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 18.5Z"></path><path d="M8.4 10.2h7.2M9 14h6"></path></svg>Budgets</button>
       <button class="bottom-nav-item" type="button" data-view-target="transactions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h10a2 2 0 0 1 2 2v12l-2-1-2 1-2-1-2 1-2-1-2 1V7a2 2 0 0 1 2-2Z"></path><path d="M9 9h6M9 12h6M9 15h4"></path></svg>Buchungen</button>
+      <button class="bottom-nav-item" type="button" data-view-target="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v14H5z"></path><path d="M8 3v5M16 3v5M5 10h14"></path></svg>Kalender</button>
       <button class="bottom-nav-item" type="button" data-view-target="reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"></path><path d="M4 20h16"></path></svg>Analyse</button>
-      <button class="bottom-nav-item" type="button" data-view-target="more"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"></path></svg>Mehr</button>
     </nav>
 
     <div class="form-templates" hidden>
@@ -564,7 +566,7 @@
           <label data-debt-field class="debt-mode-field">
             <span>Berechnung</span>
             <select id="debtCalculationModeInput">
-              <option value="auto_schedule">Automatisch nach Startdatum</option>
+              <option value="auto_schedule">Automatisch nach Ratenplan</option>
               <option value="manual">Manuell überschreiben</option>
             </select>
             <small>BudgetUp berechnet bezahlt, offen und fertig automatisch aus Startdatum und Rate.</small>
@@ -628,6 +630,13 @@
             </span>
           </label>
           <label data-debt-field>
+            <span>Effektiver Jahreszins</span>
+            <span class="percent-input">
+              <input id="effectiveRateInput" inputmode="decimal" type="text" autocomplete="off" />
+              <span>%</span>
+            </span>
+          </label>
+          <label data-debt-field>
             <span>Laufzeit in Monaten</span>
             <input id="termInput" inputmode="numeric" type="number" min="0" autocomplete="off" />
           </label>
@@ -659,7 +668,7 @@
             </label>
           </div>
           <div id="debtLiveSummary" class="debt-live-summary" data-debt-field aria-live="polite">
-            <span>Berechnung: Automatisch nach Startdatum</span>
+            <span>Berechnung: Automatisch nach Ratenplan</span>
             <strong>0,00 €</strong>
             <small>Startdatum, Gesamtschuld und Monatsrate eintragen.</small>
           </div>
@@ -861,6 +870,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=102" defer></script>
+    <script src="app.js?v=104" defer></script>
   </body>
 </html>

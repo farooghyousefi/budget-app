@@ -137,6 +137,7 @@ const elements = {
   principalInput: document.querySelector("#principalInput"),
   interestInput: document.querySelector("#interestInput"),
   nominalRateInput: document.querySelector("#nominalRateInput"),
+  effectiveRateInput: document.querySelector("#effectiveRateInput"),
   termInput: document.querySelector("#termInput"),
   finalPaymentInput: document.querySelector("#finalPaymentInput"),
   debtLiveSummary: document.querySelector("#debtLiveSummary"),
@@ -501,6 +502,9 @@ elements.categoryBudgetInput.addEventListener("focus", () => elements.categoryBu
 elements.nominalRateInput.addEventListener("blur", () => {
   elements.nominalRateInput.value = formatPercentInput(elements.nominalRateInput.value);
 });
+elements.effectiveRateInput.addEventListener("blur", () => {
+  elements.effectiveRateInput.value = formatPercentInput(elements.effectiveRateInput.value);
+});
 elements.calendarPrevButton.addEventListener("click", () => {
   elements.monthInput.value = shiftMonth(elements.monthInput.value, -1);
   selectedCalendarDay = monthToDate(elements.monthInput.value);
@@ -824,14 +828,18 @@ function getEntriesForMonth(month, context = getActiveContext()) {
 function getDebtsForMonth(month, context = getActiveContext(), { activeOnly = false, visibleOnly = true } = {}) {
   let debts = state.debts.filter((debt) => shouldIncludeItemInView(debt, context));
   if (activeOnly) debts = debts.filter((debt) => debtPaymentForMonthCents(debt, month) > 0);
-  else if (visibleOnly) debts = debts.filter((debt) => debtObjectRemainingCents(debt, month) > 0);
+  else if (visibleOnly) debts = getVisibleDebtObjects(context, month);
   return debts;
 }
 
 function getVisibleDebtObjects(context = getActiveContext(), month = elements.monthInput?.value || currentLocalMonth()) {
   return state.debts
     .filter((debt) => shouldIncludeItemInView(debt, context))
-    .filter((debt) => debtObjectRemainingCents(debt, month) > 0);
+    .filter((debt) => {
+      const computed = deriveDebtComputedFields(debt, month);
+      if (computed.totalDebtCents <= 0) return false;
+      return !isDebtMarkedClosed(debt) || computed.remainingAfterConfirmedPaymentsCents > 0;
+    });
 }
 
 function getCashflowDebtPaymentRows(context = getActiveContext(), month = elements.monthInput?.value || currentLocalMonth()) {
@@ -849,18 +857,45 @@ function getBankConnections() {
   return Array.isArray(state.bankConnections) ? state.bankConnections : [];
 }
 
-function toCents(value) {
-  if (typeof value === "number") return Math.round((Number.isFinite(value) ? value : 0) * 100);
-  const parsed = parseMoneyInput(value);
+function parseMoneyToCents(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.round(value * 100) : 0;
+  }
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/€/g, "");
+  if (!raw) return 0;
+
+  let normalized = raw;
+  const hasComma = normalized.includes(",");
+  const hasDot = normalized.includes(".");
+  if (hasComma && hasDot) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    normalized = normalized.replace(",", ".");
+  } else if (hasDot && !/^-?\d+\.\d{1,2}$/.test(normalized)) {
+    normalized = normalized.replace(/\./g, "");
+  }
+
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
+}
+
+function toCents(value) {
+  return parseMoneyToCents(value);
 }
 
 function fromCents(value) {
   return Number(value || 0) / 100;
 }
 
-function formatMoneyCents(value) {
+function formatCents(value) {
   return formatMoney.format(fromCents(value));
+}
+
+function formatMoneyCents(value) {
+  return formatCents(value);
 }
 
 function normalizeClassification(value) {
@@ -968,8 +1003,8 @@ function moneyClose(a, b, tolerance = 0.01) {
   return Math.abs(Number(a || 0) - Number(b || 0)) <= tolerance;
 }
 
-function calculateDebtSchedule(debt, month) {
-  const computed = deriveDebtComputedFields(debt, month);
+function calculateDebtSchedule(debt, month, options = {}) {
+  const computed = deriveDebtComputedFields(debt, month, options);
   return {
     ...computed,
     debt,
@@ -978,11 +1013,11 @@ function calculateDebtSchedule(debt, month) {
     lastPaymentCents: computed.finalPaymentCents || computed.monthlyPaymentCents,
     firstPaymentDate: debt.startDate || "",
     endDate: debt.endDate || "",
-    paidAmountCents: computed.paidAmountAfterCurrentMonthCents,
-    paidInstallments: computed.paidInstallmentsAfterCurrentMonth,
-    currentRemainingDebtCents: computed.remainingAfterCurrentMonthCents,
+    paidAmountCents: computed.paidAmountConfirmedCents,
+    paidInstallments: computed.paidInstallmentsConfirmed,
+    currentRemainingDebtCents: computed.remainingAfterConfirmedPaymentsCents,
     monthlyDueCents: computed.currentMonthPaymentCents,
-    progressPercent: computed.progressAfterCurrentMonthPercent,
+    progressPercent: computed.progressConfirmedPercent,
   };
 }
 
@@ -1134,9 +1169,15 @@ function addRowToDayMap(dayMap, row) {
   }
 }
 
+function linkedDebtPaymentStatusForMonth(debt, month, countedRows, schedule) {
+  const debtRows = countedRows.filter((row) => row.classification === "debt_payment");
+  const matches = rowGroupMatchesDebt(debtRows, debt, schedule, month);
+  return matches.some((row) => normalizeStatus(row.entry?.status) === "paid") ? "paid" : "";
+}
+
 function calculateCanonicalMonth(month, context = getActiveContext()) {
   const entries = deriveRecurringTransactionInstances(month, context);
-  const debtSchedules = getVisibleDebtObjects(context, month).map((debt) => calculateDebtSchedule(debt, month));
+  const visibleDebtObjects = getVisibleDebtObjects(context, month);
   const activeDebtSchedules = getDebtsForMonth(month, context, { activeOnly: true, visibleOnly: false })
     .map((debt) => calculateDebtSchedule(debt, month))
     .filter((schedule) => schedule.monthlyDueCents > 0);
@@ -1201,6 +1242,12 @@ function calculateCanonicalMonth(month, context = getActiveContext()) {
     debtPaymentTransactionCents += row.amountCents;
   });
 
+  const debtSchedules = visibleDebtObjects.map((debt) => {
+    const schedule = activeDebtSchedules.find((item) => item.debtId === debt.id) || calculateDebtSchedule(debt, month);
+    return calculateDebtSchedule(debt, month, {
+      currentMonthPaymentStatus: linkedDebtPaymentStatusForMonth(debt, month, countedRows, schedule),
+    });
+  });
   const debtPaymentTotalCents = debtPaymentTransactionCents;
   const totalMonthlyOutflowCents = fixedExpenseTotalCents + debtPaymentTotalCents + variableExpenseTotalCents;
   const monthlyBalanceCents = incomeTotalCents - totalMonthlyOutflowCents;
@@ -1208,23 +1255,30 @@ function calculateCanonicalMonth(month, context = getActiveContext()) {
   const daysLeft = daysLeftInMonth(month);
   const dailyRemainingBudgetCents = daysLeft > 0 ? Math.round(monthlyBalanceCents / daysLeft) : monthlyBalanceCents;
   const debtBalanceTotalCents = debtSchedules.reduce((total, schedule) => total + schedule.currentRemainingDebtCents, 0);
+  const openDebtCount = debtSchedules.filter((schedule) => schedule.currentRemainingDebtCents > 0 || !isDebtMarkedClosed(schedule.debt)).length;
   const assetTotalCents = getAssetsForContext(context).reduce((total, asset) => total + toCents(asset.amount), 0);
   const netWorthCents = assetTotalCents - debtBalanceTotalCents;
   const debtRatio = incomeTotalCents > 0 ? Math.round((debtPaymentTotalCents / incomeTotalCents) * 100) : 0;
 
   const incomeRows = countedRows.filter((row) => row.classification === "income");
-  const expenseRows = countedRows.filter((row) => ["fixed_expense", "debt_payment", "variable_expense"].includes(row.classification));
+  const fixedExpenseRows = countedRows.filter((row) => row.classification === "fixed_expense");
+  const debtPaymentRows = countedRows.filter((row) => row.classification === "debt_payment");
+  const variableExpenseRows = countedRows.filter((row) => row.classification === "variable_expense");
+  const transferRows = ignoredRows.filter((row) => row.classification === "transfer");
+  const expenseRows = [...fixedExpenseRows, ...debtPaymentRows, ...variableExpenseRows];
   const outflowRows = expenseRows
     .filter((row) => ["fixed_expense", "debt_payment", "variable_expense"].includes(row.classification))
     .sort((a, b) => b.amountCents - a.amountCents);
   const topExpenseCategories = topRowsBy(outflowRows, (row) => row.category || "Sonstiges", 5);
   const topPayments = outflowRows.slice(0, 5);
+  const unlinkedDebtPaymentRows = debtPaymentRows.filter((row) => !debtSchedules.some((schedule) => rowMatchesDebt(row, schedule.debt, schedule, month)));
   const warnings = [];
   countedRows.forEach((row) => {
     if (row.classificationSource === "fallback" && row.kind === "entry" && isEntryRecurring(row.entry) && !row.entry.classification) {
       warnings.push(`Bitte pruefen: "${row.label}" wurde automatisch als ${classificationLabel(row.classification)} erkannt.`);
     }
   });
+  if (unlinkedDebtPaymentRows.length) warnings.push("Kreditrate ohne verknüpfte Restschuld");
   if (incomeTotalCents <= 0 && totalMonthlyOutflowCents > 0) warnings.push("Daten fehlen: Es gibt Ausgaben, aber keine Einnahmen im Monat.");
   if (debtRatio >= 40) warnings.push("Schuldenrate frisst einen grossen Teil des Einkommens.");
 
@@ -1253,6 +1307,10 @@ function calculateCanonicalMonth(month, context = getActiveContext()) {
     contextPersonId: context.id,
     selectedMonth: month,
     incomeRows,
+    fixedExpenseRows,
+    debtPaymentRows,
+    variableExpenseRows,
+    transferRows,
     expenseRows,
     countedRows: countedRows.sort(canonicalRowSort),
     duplicateRows: duplicateRows.sort(canonicalRowSort),
@@ -1269,6 +1327,11 @@ function calculateCanonicalMonth(month, context = getActiveContext()) {
     dailyRemainingBudgetCents,
     fixedAndDebtFreeCents,
     debtBalanceTotalCents,
+    debtObjects: state.debts.filter((debt) => shouldIncludeItemInView(debt, context)),
+    visibleDebtObjects,
+    openDebtCount,
+    unlinkedDebtPaymentRows,
+    debtBalanceCompleteness: debtSchedules.length ? "complete" : "none",
     assetTotalCents,
     netWorthCents,
     debtRatio,
@@ -1298,6 +1361,10 @@ function calculateCanonicalMonth(month, context = getActiveContext()) {
     totalAssets: fromCents(assetTotalCents),
     netWorth: fromCents(netWorthCents),
   };
+}
+
+function getCashflowRows(context = getActiveContext(), month = elements.monthInput?.value || currentLocalMonth()) {
+  return calculateCanonicalMonth(month, context).countedRows;
 }
 
 function canonicalRowSort(a, b) {
@@ -1532,7 +1599,7 @@ function getCalendarDaySummary(date, context = getActiveContext()) {
 }
 
 function normalizeView(view) {
-  const valid = ["overview", "accounts", "budgets", "transactions", "reports", "more"];
+  const valid = ["overview", "accounts", "budgets", "calendar", "transactions", "reports", "more"];
   return valid.includes(view) ? view : "overview";
 }
 
@@ -1543,6 +1610,7 @@ function setActiveView(view, { resetScroll = true } = {}) {
     overview: "Start",
     accounts: "Geld",
     budgets: "Budgets",
+    calendar: "Kalender",
     transactions: "Buchungen",
     reports: "Analyse",
     more: "Mehr",
@@ -1551,7 +1619,7 @@ function setActiveView(view, { resetScroll = true } = {}) {
     section.hidden = section.dataset.view !== activeView;
   });
   if (elements.calendarPanel) {
-    elements.calendarPanel.hidden = activeView !== "transactions";
+    elements.calendarPanel.hidden = activeView !== "calendar";
   }
   elements.navButtons.forEach((button) => {
     const selected = button.dataset.viewTarget === activeView;
@@ -1979,6 +2047,7 @@ function saveDebtFromMainForm() {
   const principalAmount = parseMoneyInput(elements.principalInput.value);
   const interestAmount = parseMoneyInput(elements.interestInput.value);
   const nominalRate = parsePercentInput(elements.nominalRateInput.value);
+  const effectiveRate = parsePercentInput(elements.effectiveRateInput.value);
   const finalPayment = parseMoneyInput(elements.finalPaymentInput.value);
   const calculationMode = normalizeDebtCalculationMode(elements.debtCalculationModeInput.value);
   const manualPaidInstallments = Number(elements.manualPaidInstallmentsInput.value) || 0;
@@ -1993,6 +2062,7 @@ function saveDebtFromMainForm() {
     elements.principalInput.value,
     elements.interestInput.value,
     elements.nominalRateInput.value,
+    elements.effectiveRateInput.value,
     elements.termInput.value,
     elements.finalPaymentInput.value,
     calculationMode === "manual" ? elements.paidSoFarInput.value : "",
@@ -2034,13 +2104,16 @@ function saveDebtFromMainForm() {
     personId: elements.personInput.value || defaultPersonId(),
     creditor: elements.creditorInput.value.trim(),
     totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
+    totalAmountCents: Number.isFinite(totalAmount) ? toCents(totalAmount) : 0,
     calculationMode,
     paidSoFar: calculationMode === "manual" && Number.isFinite(paidSoFar) ? paidSoFar : 0,
+    manualPaidAmountCents: calculationMode === "manual" && Number.isFinite(paidSoFar) ? toCents(paidSoFar) : 0,
     paidThroughMonth: calculationMode === "manual"
       ? normalizeMonthValue(elements.paidThroughInput.value)
       : "",
     manualPaidInstallments: calculationMode === "manual" ? Math.max(0, Math.floor(manualPaidInstallments)) : 0,
     monthlyPayment: Number.isFinite(monthlyPayment) ? monthlyPayment : 0,
+    monthlyPaymentCents: Number.isFinite(monthlyPayment) ? toCents(monthlyPayment) : 0,
     startDate: elements.debtStartInput.value,
     endDate: elements.debtEndInput.value,
     status: normalizeStatus(elements.debtStatusInput.value),
@@ -2048,10 +2121,14 @@ function saveDebtFromMainForm() {
     account: elements.debtAccountInput.value.trim(),
     liabilityType: inferLiabilityType({ creditor: elements.creditorInput.value.trim(), account: elements.debtAccountInput.value.trim(), note: "" }),
     principalAmount: Number.isFinite(principalAmount) ? principalAmount : 0,
+    principalAmountCents: Number.isFinite(principalAmount) ? toCents(principalAmount) : 0,
     interestAmount: Number.isFinite(interestAmount) ? interestAmount : 0,
+    interestAmountCents: Number.isFinite(interestAmount) ? toCents(interestAmount) : 0,
     nominalRate: Number.isFinite(nominalRate) ? nominalRate : 0,
+    effectiveRate: Number.isFinite(effectiveRate) ? effectiveRate : 0,
     termMonths: Number(elements.termInput.value) || 0,
     finalPayment: Number.isFinite(finalPayment) ? finalPayment : 0,
+    finalPaymentCents: Number.isFinite(finalPayment) ? toCents(finalPayment) : 0,
     note: "",
   };
 
@@ -2350,6 +2427,7 @@ function syncFormMode() {
   elements.principalInput.required = false;
   elements.interestInput.required = false;
   elements.nominalRateInput.required = false;
+  elements.effectiveRateInput.required = false;
   elements.termInput.required = false;
   elements.finalPaymentInput.required = false;
 
@@ -2708,18 +2786,26 @@ function renderDebts() {
   elements.debtList.innerHTML = debts.map((debt) => {
     const computed = deriveDebtComputedFields(debt, month);
     const active = computed.currentMonthPaymentCents > 0;
-    const progress = computed.progressAfterCurrentMonthPercent;
+    const progress = computed.progressConfirmedPercent;
     const badges = debtBadges(debt, month, active);
     const manualHint = manualPaymentDebtIds.has(debt.id)
       ? `<small class="debt-cashflow-hint">Rate wird durch Buchung erfasst, nicht doppelt gezählt.</small>`
       : "";
     const modeHint = computed.calculationMode === "manual"
       ? "Manuell überschrieben"
-      : `Automatisch berechnet ab ${formatDateFull(computed.startDate || debt.startDate || monthToDate(month))}`;
+      : `Automatisch nach Ratenplan ab ${formatDateFull(computed.startDate || debt.startDate || monthToDate(month))}`;
     const warning = computed.warnings.length
       ? `<small class="debt-cashflow-hint warning">${escapeHtml(computed.warnings[0])}</small>`
       : "";
-    const previousMonth = shiftMonth(month, -1);
+    const paidThroughLabel = computed.paidThroughMonth
+      ? formatMonthName(computed.paidThroughMonth)
+      : "noch nicht bestätigt";
+    const headline = computed.currentMonthPaymentStatus === "paid"
+      ? `Restschuld nach ${monthOnlyName(month)}-Rate`
+      : "Restschuld nach letzter bezahlter Rate";
+    const currentPaymentLabel = computed.currentMonthPaymentStatus === "paid"
+      ? `Rate im ${monthOnlyName(month)} bezahlt`
+      : `Offene Rate im ${monthOnlyName(month)}`;
     const meta = [
       personName(debt.personId),
       debt.startDate || debt.endDate ? `${debt.startDate ? formatDateFull(debt.startDate) : "kein Start"} bis ${debt.endDate ? formatDateFull(debt.endDate) : "offen"}` : "",
@@ -2741,17 +2827,18 @@ function renderDebts() {
           ${badges ? `<div class="status-badges">${badges}</div>` : ""}
         </div>
         <div class="debt-numbers">
-          ${debtNumberLine(`Restschuld nach ${monthOnlyName(month)}-Rate`, formatMoneyCents(computed.remainingAfterCurrentMonthCents), "remaining", "strong")}
-          ${debtNumberLine(`Restschuld vor ${monthOnlyName(month)}-Rate`, formatMoneyCents(computed.remainingBeforeCurrentMonthCents))}
-          ${debtNumberLine(`Rate im ${monthOnlyName(month)}`, formatMoneyCents(computed.currentMonthPaymentCents))}
-          ${debtNumberLine(`Bezahlt bis ${formatMonthName(previousMonth)}`, formatMoneyCents(computed.paidAmountBeforeCurrentMonthCents), "paid")}
+          ${debtNumberLine(headline, formatMoneyCents(computed.remainingAfterConfirmedPaymentsCents), "remaining", "strong")}
+          ${debtNumberLine(currentPaymentLabel, formatMoneyCents(computed.currentMonthPaymentCents))}
+          ${debtNumberLine(`Restschuld nach Zahlung`, formatMoneyCents(computed.remainingAfterCurrentMonthIfPaidCents))}
+          ${debtNumberLine(`Bereits bezahlt bis`, paidThroughLabel, "paid")}
           <div class="debt-progress-line">
-            <span>Fortschritt nach ${escapeHtml(monthOnlyName(month))}-Rate</span>
+            <span>Fortschritt bestätigt</span>
             <strong>${Math.round(progress)}%</strong>
           </div>
           <div class="debt-progress" aria-hidden="true">
             <span style="width: ${progress}%"></span>
           </div>
+          <small class="debt-cashflow-hint">Nach Zahlung: ${computed.progressIfCurrentMonthPaidPercent} % · ${computed.remainingInstallmentsConfirmed} Rate${computed.remainingInstallmentsConfirmed === 1 ? "" : "n"} offen</small>
           <small class="debt-cashflow-hint">${escapeHtml(modeHint)}</small>
           ${manualHint}
           ${warning}
@@ -2769,7 +2856,7 @@ function debtNumberLine(label, value, className = "", tag = "span") {
 }
 
 function debtProgressPercent(debt, month) {
-  return deriveDebtComputedFields(debt, month).progressAfterCurrentMonthPercent;
+  return deriveDebtComputedFields(debt, month).progressConfirmedPercent;
 }
 
 function renderAssets() {
@@ -3187,11 +3274,11 @@ function renderReports() {
   elements.reportsFreeAfterFixedValue.textContent = formatMoneyCents(summary.fixedAndDebtFreeCents);
   elements.reportsFreeAfterFixedHint.textContent = "nach Fixkosten und Raten";
   elements.reportsNetWorthValue.textContent = formatMoneyCents(summary.netWorthCents);
-  elements.reportsNetWorthHint.textContent = `${formatMoneyCents(summary.assetTotalCents)} Vermögen · ${formatMoneyCents(summary.debtBalanceTotalCents)} Restschuld`;
+  elements.reportsNetWorthHint.textContent = `${formatMoneyCents(summary.assetTotalCents)} Vermögen · ${formatMoneyCents(summary.debtBalanceTotalCents)} bestätigte Restschuld`;
   elements.reportsDebtValue.textContent = formatMoneyCents(summary.debtBalanceTotalCents);
   elements.reportsDebtHint.textContent = summary.debtPaymentTotalCents > 0
-    ? `${formatMoneyCents(summary.debtPaymentTotalCents)} Raten im Monat`
-    : "keine aktiven Raten";
+    ? `${summary.openDebtCount} offen · ${formatMoneyCents(summary.debtPaymentTotalCents)} Monatsraten`
+    : `${summary.openDebtCount} offen`;
   elements.reportsMonthMini.textContent = formatMoneyCents(summary.monthlyBalanceCents);
 
   elements.reportsOptimizationList.innerHTML = actionInsights(insights, diagnosis)
@@ -3377,8 +3464,9 @@ function summaryBreakdownData(type) {
     .map((row) => analysisSummaryRow(row, row.amount));
   const expenseRows = analysis.outflowRows
     .map((row) => analysisSummaryRow(row, row.amount));
+  const debtTotalLabel = analysis.debtBalanceCompleteness === "complete" ? "Bestätigte Restschuld" : "Erfasste Restschuld";
   const debtRows = analysis.debtSchedules
-    .map((schedule) => debtSummaryRow(schedule.debt, fromCents(schedule.currentRemainingDebtCents), `Restschuld nach ${monthOnlyName(month)}-Rate`));
+    .map((schedule) => debtSummaryRow(schedule.debt, fromCents(schedule.currentRemainingDebtCents), debtTotalLabel));
   const assetRows = getAssetsForContext()
     .map((asset) => ({
       title: asset.name || "Vermögen",
@@ -3405,7 +3493,7 @@ function summaryBreakdownData(type) {
     return buildSummaryData("Monatliches Ergebnis", balanceRows);
   }
   if (type === "debt") {
-    return buildSummaryData("Schulden gesamt", debtRows);
+    return buildSummaryData(debtTotalLabel, debtRows);
   }
   if (type === "asset") {
     return buildSummaryData("Vermögen gesamt", assetRows);
@@ -3511,6 +3599,7 @@ function editDebt(id) {
   elements.principalInput.value = formatMoneyInput(debt.principalAmount || "");
   elements.interestInput.value = formatMoneyInput(debt.interestAmount || "");
   elements.nominalRateInput.value = formatPercentInput(debt.nominalRate || "");
+  elements.effectiveRateInput.value = formatPercentInput(debt.effectiveRate || "");
   elements.termInput.value = debt.termMonths || "";
   elements.finalPaymentInput.value = formatMoneyInput(debt.finalPayment || "");
   syncFormMode();
@@ -4349,21 +4438,9 @@ function clearFieldErrors() {
 }
 
 function parseMoneyInput(value) {
-  const cleaned = String(value)
-    .trim()
-    .replace(/\s/g, "")
-    .replace(/€/g, "");
-  if (!cleaned) return NaN;
-
-  if (cleaned.includes(",")) {
-    return Number(cleaned.replace(/\./g, "").replace(",", "."));
-  }
-
-  if (/^-?\d+\.\d{1,2}$/.test(cleaned)) {
-    return Number(cleaned);
-  }
-
-  return Number(cleaned.replace(/\./g, ""));
+  const raw = String(value ?? "").trim();
+  if (!raw) return NaN;
+  return fromCents(parseMoneyToCents(value));
 }
 
 function formatMoneyInput(value) {
@@ -4404,28 +4481,38 @@ function updateDebtLiveSummary() {
     termMonths: Number(elements.termInput.value) || 0,
   };
   const computed = deriveDebtComputedFields(draftDebt, selectedMonth);
-  const previousMonth = shiftMonth(selectedMonth, -1);
   const modeLabel = computed.calculationMode === "manual"
     ? "Berechnung: Manuell überschrieben"
-    : "Berechnung: Automatisch nach Startdatum";
+    : "Berechnung: Automatisch nach Ratenplan";
   const warning = computed.warnings.length
     ? `<small class="debt-warning-text">${escapeHtml(computed.warnings[0])}</small>`
     : "";
+  const paidThroughLabel = computed.paidThroughMonth
+    ? formatMonthName(computed.paidThroughMonth)
+    : "noch nicht bestätigt";
+  const isPaid = computed.currentMonthPaymentStatus === "paid";
+  const headline = isPaid
+    ? `Restschuld nach ${monthOnlyName(selectedMonth)}-Rate`
+    : "Restschuld nach letzter bezahlter Rate";
+  const paymentLabel = isPaid
+    ? `Rate im ${formatMonthName(selectedMonth)} bezahlt`
+    : `Offene Rate im ${formatMonthName(selectedMonth)}`;
 
   elements.debtLiveSummary.innerHTML = `
     <span>${escapeHtml(modeLabel)}</span>
-    <strong>${formatMoneyCents(computed.remainingAfterCurrentMonthCents)}</strong>
-    <small>${escapeHtml(`Restschuld nach ${monthOnlyName(selectedMonth)}-Rate`)}</small>
+    <strong>${formatMoneyCents(computed.remainingAfterConfirmedPaymentsCents)}</strong>
+    <small>${escapeHtml(headline)}</small>
     <div class="debt-preview-grid">
-      <div><span>Bezahlt bis ${escapeHtml(formatMonthName(previousMonth))}</span><b>${formatMoneyCents(computed.paidAmountBeforeCurrentMonthCents)}</b></div>
-      <div><span>Rate im ${escapeHtml(formatMonthName(selectedMonth))}</span><b>${formatMoneyCents(computed.currentMonthPaymentCents)}</b></div>
-      <div><span>Vor Rate</span><b>${formatMoneyCents(computed.remainingBeforeCurrentMonthCents)}</b></div>
-      <div><span>Fortschritt</span><b>${computed.progressAfterCurrentMonthPercent} %</b></div>
+      <div><span>${escapeHtml(paymentLabel)}</span><b>${formatMoneyCents(computed.currentMonthPaymentCents)}</b></div>
+      <div><span>Restschuld nach Zahlung</span><b>${formatMoneyCents(computed.remainingAfterCurrentMonthIfPaidCents)}</b></div>
+      <div><span>Bereits bezahlt bis</span><b>${escapeHtml(paidThroughLabel)}</b></div>
+      <div><span>Fortschritt bestätigt</span><b>${computed.progressConfirmedPercent} %</b></div>
+      <div><span>Fortschritt nach Zahlung</span><b>${computed.progressIfCurrentMonthPaidPercent} %</b></div>
     </div>
     <small>${escapeHtml(computed.displaySummary)}</small>
     ${warning}
   `;
-  elements.debtLiveSummary.classList.toggle("is-clear", computed.remainingAfterCurrentMonthCents <= 0 && safeTotal > 0);
+  elements.debtLiveSummary.classList.toggle("is-clear", computed.remainingAfterConfirmedPaymentsCents <= 0 && safeTotal > 0);
 }
 
 function parsePercentInput(value) {
@@ -4575,7 +4662,7 @@ function debtObjectRemaining(debt, month) {
 }
 
 function debtObjectRemainingCents(debt, month = elements.monthInput?.value || currentLocalMonth()) {
-  return deriveDebtComputedFields(debt, month).remainingAfterCurrentMonthCents;
+  return deriveDebtComputedFields(debt, month).remainingAfterConfirmedPaymentsCents;
 }
 
 function currentOutstandingDebt(debt) {
@@ -4596,23 +4683,23 @@ function debtPaymentForMonth(debt, month) {
 }
 
 function debtTotalCents(debt) {
-  return Math.max(0, toCents(debt.totalAmount));
+  return debtFieldCents(debt, "totalAmountCents", "totalAmount");
 }
 
 function monthlyDebtPaymentCents(debt) {
-  return Math.max(0, toCents(debt.monthlyPayment));
+  return debtFieldCents(debt, "monthlyPaymentCents", "monthlyPayment");
 }
 
 function normalizedDebtPaidSoFarCents(debt) {
-  return Math.max(0, toCents(debt.paidSoFar));
+  return debtFieldCents(debt, "manualPaidAmountCents", "paidSoFar");
 }
 
 function remainingDebtCents(debt, month) {
-  return deriveDebtComputedFields(debt, month).remainingAfterCurrentMonthCents;
+  return deriveDebtComputedFields(debt, month).remainingAfterConfirmedPaymentsCents;
 }
 
 function paidDebtCents(debt, month) {
-  return deriveDebtComputedFields(debt, month).paidAmountAfterCurrentMonthCents;
+  return deriveDebtComputedFields(debt, month).paidAmountConfirmedCents;
 }
 
 function paidDebtBeforeMonthCents(debt, month) {
@@ -4624,12 +4711,12 @@ function debtPaymentForMonthCents(debt, month) {
 }
 
 function paidMonthsUntil(debt, month) {
-  return deriveDebtComputedFields(debt, month).paidInstallmentsAfterCurrentMonth;
+  return deriveDebtComputedFields(debt, month).paidInstallmentsConfirmed;
 }
 
 function debtPaidThroughMonth(debt) {
   const month = elements.monthInput?.value || currentLocalMonth();
-  return deriveDebtComputedFields(debt, month).paidUntilBeforeCurrentMonth || "";
+  return deriveDebtComputedFields(debt, month).paidThroughMonth || "";
 }
 
 function normalizedDebtPaidSoFar(debt) {
@@ -4644,18 +4731,37 @@ function isDebtMarkedClosed(debt) {
   return normalizeStatus(debt.status) !== "open";
 }
 
-function deriveDebtInstallmentPlan(debt, totalDebtCents, monthlyPaymentCents) {
+function debtFieldCents(debt, centsKey, euroKey) {
+  const centsValue = debt?.[centsKey];
+  if (Number.isFinite(Number(centsValue)) && String(centsValue).trim() !== "") {
+    return Math.max(0, Math.round(Number(centsValue)));
+  }
+  return Math.max(0, toCents(debt?.[euroKey]));
+}
+
+function addMonthsSafe(date, amount) {
+  return addMonthsToDate(date, amount);
+}
+
+function deriveDebtSchedule(debt) {
   const warnings = [];
-  const enteredFinalPaymentCents = Math.max(0, toCents(debt.finalPayment));
+  const totalDebtCents = debtTotalCents(debt);
+  const monthlyPaymentCents = monthlyDebtPaymentCents(debt);
+  const enteredFinalPaymentCents = debtFieldCents(debt, "finalPaymentCents", "finalPayment");
   const hasEnteredFinalPayment = enteredFinalPaymentCents > 0;
-  const termMonths = Math.max(0, Math.floor(Number(debt.termMonths || 0)))
-    || (debt.startDate && debt.endDate ? monthsFromDates(debt.startDate, debt.endDate) : 0);
+  const termMonths = Math.max(0, Math.floor(Number(debt.termMonths || 0)));
+  const startDate = normalizeDate(debt.startDate || "") || "";
+  const endDate = normalizeDate(debt.endDate || "") || "";
 
   if (totalDebtCents <= 0 || monthlyPaymentCents <= 0) {
     return {
+      totalDebtCents,
+      monthlyPaymentCents,
       regularInstallmentCount: 0,
       totalInstallmentCount: 0,
       finalPaymentCents: 0,
+      finalPaymentDate: "",
+      scheduleRows: [],
       warnings,
     };
   }
@@ -4665,35 +4771,71 @@ function deriveDebtInstallmentPlan(debt, totalDebtCents, monthlyPaymentCents) {
 
   if (hasEnteredFinalPayment) {
     const cappedEnteredFinal = Math.min(totalDebtCents, enteredFinalPaymentCents);
-    regularInstallmentCount = Math.floor(Math.max(0, totalDebtCents - cappedEnteredFinal) / monthlyPaymentCents);
-    finalPaymentCents = totalDebtCents - regularInstallmentCount * monthlyPaymentCents;
-    if (Math.abs(finalPaymentCents - cappedEnteredFinal) > 1) {
-      warnings.push(`Letzte Rate rechnerisch ${formatMoneyCents(finalPaymentCents)} statt ${formatMoneyCents(cappedEnteredFinal)}, damit die Gesamtschuld exakt aufgeht.`);
-    }
-  } else if (termMonths > 0) {
-    regularInstallmentCount = Math.max(0, termMonths - 1);
-    finalPaymentCents = totalDebtCents - regularInstallmentCount * monthlyPaymentCents;
-    if (finalPaymentCents <= 0) {
+    const regularRaw = Math.max(0, totalDebtCents - cappedEnteredFinal) / monthlyPaymentCents;
+    if (Number.isInteger(regularRaw)) {
+      regularInstallmentCount = regularRaw;
+      finalPaymentCents = cappedEnteredFinal;
+    } else {
       regularInstallmentCount = Math.floor(totalDebtCents / monthlyPaymentCents);
       finalPaymentCents = totalDebtCents - regularInstallmentCount * monthlyPaymentCents;
-      warnings.push("Laufzeit ist länger als die Schuld bei dieser Monatsrate. BudgetUp nutzt die rechnerische Laufzeit.");
+      if (finalPaymentCents === 0) {
+        regularInstallmentCount = Math.max(0, regularInstallmentCount - 1);
+        finalPaymentCents = totalDebtCents - regularInstallmentCount * monthlyPaymentCents;
+      }
+      warnings.push(`Letzte Rate rechnerisch ${formatMoneyCents(finalPaymentCents)} statt ${formatMoneyCents(cappedEnteredFinal)}, damit die Gesamtschuld exakt aufgeht.`);
     }
   } else {
     regularInstallmentCount = Math.floor(totalDebtCents / monthlyPaymentCents);
     finalPaymentCents = totalDebtCents - regularInstallmentCount * monthlyPaymentCents;
   }
 
-  if (regularInstallmentCount === 0 && finalPaymentCents === 0 && totalDebtCents > 0) {
-    finalPaymentCents = Math.min(totalDebtCents, monthlyPaymentCents);
-  }
-
   const hasFinalPayment = finalPaymentCents > 0;
   const totalInstallmentCount = regularInstallmentCount + (hasFinalPayment ? 1 : 0);
+  const scheduleRows = [];
+  for (let index = 0; index < totalInstallmentCount; index += 1) {
+    const installmentNumber = index + 1;
+    const dueDate = startDate ? addMonthsSafe(startDate, index) : "";
+    const amountCents = installmentNumber <= regularInstallmentCount ? monthlyPaymentCents : finalPaymentCents;
+    scheduleRows.push({
+      installmentNumber,
+      dueDate,
+      dueMonth: dueDate ? dueDate.slice(0, 7) : "",
+      amountCents,
+      isFinalInstallment: installmentNumber === totalInstallmentCount,
+    });
+  }
+  const finalPaymentDate = scheduleRows.length ? scheduleRows[scheduleRows.length - 1].dueDate : "";
+
+  if (termMonths > 0 && termMonths !== totalInstallmentCount) {
+    warnings.push("Laufzeit passt nicht zu Gesamtschuld, Monatsrate und letzter Rate.");
+  }
+  if (startDate && endDate && finalPaymentDate && finalPaymentDate !== endDate) {
+    warnings.push("Startdatum, Enddatum und Ratenanzahl passen nicht zusammen.");
+  }
+
   return {
+    totalDebtCents,
+    monthlyPaymentCents,
     regularInstallmentCount,
     totalInstallmentCount,
     finalPaymentCents: hasFinalPayment ? finalPaymentCents : 0,
+    finalPaymentDate,
+    scheduleRows,
     warnings,
+  };
+}
+
+function deriveDebtInstallmentPlan(debt, totalDebtCents, monthlyPaymentCents) {
+  const schedule = deriveDebtSchedule({
+    ...debt,
+    totalAmountCents: totalDebtCents,
+    monthlyPaymentCents,
+  });
+  return {
+    regularInstallmentCount: schedule.regularInstallmentCount,
+    totalInstallmentCount: schedule.totalInstallmentCount,
+    finalPaymentCents: schedule.finalPaymentCents,
+    warnings: schedule.warnings,
   };
 }
 
@@ -4729,92 +4871,105 @@ function estimateInstallmentsFromPaidAmount(plan, paidAmountCents) {
   return count;
 }
 
-function deriveDebtComputedFields(debt, selectedMonth = elements.monthInput?.value || currentLocalMonth()) {
+function deriveDebtComputedFields(debt, selectedMonth = elements.monthInput?.value || currentLocalMonth(), options = {}) {
   const currentMonth = normalizeMonthValue(selectedMonth) || currentLocalMonth();
   const calculationMode = normalizeDebtCalculationMode(debt.calculationMode);
-  const totalDebtCents = debtTotalCents(debt);
-  const monthlyPaymentCents = monthlyDebtPaymentCents(debt);
+  const schedule = deriveDebtSchedule(debt);
+  const totalDebtCents = schedule.totalDebtCents;
+  const monthlyPaymentCents = schedule.monthlyPaymentCents;
   const startDate = normalizeDate(debt.startDate || "") || "";
-  const planBase = deriveDebtInstallmentPlan(debt, totalDebtCents, monthlyPaymentCents);
-  const plan = { ...planBase, totalDebtCents, monthlyPaymentCents };
-  const warnings = [...planBase.warnings];
+  const plan = { ...schedule, totalDebtCents, monthlyPaymentCents };
+  const warnings = [...schedule.warnings];
   const closed = isDebtMarkedClosed(debt);
   const startMonth = startDate ? startDate.slice(0, 7) : currentMonth;
   const selectedInstallmentNumber = startDate ? monthsBetween(startMonth, currentMonth) + 1 : 0;
-  const beforeStart = !startDate || selectedInstallmentNumber < 1;
-  const finalPaymentDate = startDate && plan.totalInstallmentCount > 0
-    ? addMonthsToDate(startDate, plan.totalInstallmentCount - 1)
-    : "";
+  const currentScheduleRow = plan.scheduleRows.find((row) => row.dueMonth === currentMonth) || null;
+  const firstDueMonth = plan.scheduleRows[0]?.dueMonth || "";
+  const finalPaymentDate = plan.finalPaymentDate || "";
+  const paidThroughCandidate = normalizeMonthValue(options.paidThroughMonth || debt.paidThroughMonth);
+  const explicitInstallments = Math.max(0, Math.floor(Number(debt.manualPaidInstallments || 0)));
+  const manualPaidAmountCents = Math.min(totalDebtCents, normalizedDebtPaidSoFarCents(debt));
+  const throughInstallments = paidThroughCandidate
+    ? plan.scheduleRows.filter((row) => row.dueMonth && row.dueMonth <= paidThroughCandidate).length
+    : 0;
+  const inferredInstallments = calculationMode === "manual" && manualPaidAmountCents > 0 && !paidThroughCandidate && explicitInstallments <= 0
+    ? estimateInstallmentsFromPaidAmount(plan, manualPaidAmountCents)
+    : 0;
+  const linkedCurrentPaymentPaid = normalizeStatus(options.currentMonthPaymentStatus) === "paid";
 
-  let paidInstallmentsBeforeCurrentMonth = 0;
-  let paidAmountBeforeCurrentMonthCents = 0;
-  let currentMonthPaymentCents = 0;
-
+  let paidInstallmentsConfirmed = 0;
   if (closed) {
-    paidInstallmentsBeforeCurrentMonth = plan.totalInstallmentCount;
-    paidAmountBeforeCurrentMonthCents = totalDebtCents;
-  } else if (totalDebtCents > 0 && monthlyPaymentCents > 0 && startDate && plan.totalInstallmentCount > 0 && !beforeStart) {
-    if (calculationMode === "manual") {
-      const explicitPaid = Math.min(totalDebtCents, normalizedDebtPaidSoFarCents(debt));
-      const manualThroughMonth = normalizeMonthValue(debt.paidThroughMonth);
-      const throughInstallments = manualThroughMonth
-        ? Math.max(0, Math.min(plan.totalInstallmentCount, monthsBetween(startMonth, manualThroughMonth) + 1))
-        : 0;
-      const explicitInstallments = Math.max(0, Math.floor(Number(debt.manualPaidInstallments || 0)));
-      const inferredInstallments = !manualThroughMonth && explicitInstallments <= 0
-        ? estimateInstallmentsFromPaidAmount(plan, explicitPaid)
-        : 0;
-      const paidInstallmentAnchor = Math.max(throughInstallments, explicitInstallments, inferredInstallments);
-      const paidAmountAnchor = explicitPaid > 0
-        ? explicitPaid
-        : debtPaidAmountForInstallmentCount(plan, paidInstallmentAnchor);
-
-      if (selectedInstallmentNumber <= paidInstallmentAnchor) {
-        paidInstallmentsBeforeCurrentMonth = paidInstallmentAnchor;
-        paidAmountBeforeCurrentMonthCents = Math.min(totalDebtCents, paidAmountAnchor);
-      } else {
-        paidInstallmentsBeforeCurrentMonth = Math.min(plan.totalInstallmentCount, selectedInstallmentNumber - 1);
-        paidAmountBeforeCurrentMonthCents = Math.min(
-          totalDebtCents,
-          paidAmountAnchor + debtPaidAmountForInstallmentRange(plan, paidInstallmentAnchor + 1, paidInstallmentsBeforeCurrentMonth)
-        );
-        currentMonthPaymentCents = selectedInstallmentNumber <= plan.totalInstallmentCount
-          ? Math.min(debtPaymentAmountForInstallment(plan, selectedInstallmentNumber), Math.max(0, totalDebtCents - paidAmountBeforeCurrentMonthCents))
-          : 0;
-      }
-    } else {
-      paidInstallmentsBeforeCurrentMonth = Math.min(plan.totalInstallmentCount, Math.max(0, selectedInstallmentNumber - 1));
-      paidAmountBeforeCurrentMonthCents = debtPaidAmountForInstallmentCount(plan, paidInstallmentsBeforeCurrentMonth);
-      currentMonthPaymentCents = selectedInstallmentNumber <= plan.totalInstallmentCount
-        ? debtPaymentAmountForInstallment(plan, selectedInstallmentNumber)
-        : 0;
+    paidInstallmentsConfirmed = plan.totalInstallmentCount;
+  } else {
+    paidInstallmentsConfirmed = Math.max(throughInstallments, explicitInstallments, inferredInstallments);
+    if (linkedCurrentPaymentPaid && currentScheduleRow) {
+      paidInstallmentsConfirmed = Math.max(paidInstallmentsConfirmed, currentScheduleRow.installmentNumber);
     }
   }
+  paidInstallmentsConfirmed = Math.max(0, Math.min(plan.totalInstallmentCount, paidInstallmentsConfirmed));
 
-  currentMonthPaymentCents = Math.min(currentMonthPaymentCents, Math.max(0, totalDebtCents - paidAmountBeforeCurrentMonthCents));
-  const paidAmountAfterCurrentMonthCents = Math.min(totalDebtCents, paidAmountBeforeCurrentMonthCents + currentMonthPaymentCents);
-  const paidInstallmentsAfterCurrentMonth = Math.min(
-    plan.totalInstallmentCount,
-    paidInstallmentsBeforeCurrentMonth + (currentMonthPaymentCents > 0 ? 1 : 0)
+  let paidAmountConfirmedCents = debtPaidAmountForInstallmentCount(plan, paidInstallmentsConfirmed);
+  if (calculationMode === "manual" && manualPaidAmountCents > 0) {
+    paidAmountConfirmedCents = Math.max(paidAmountConfirmedCents, manualPaidAmountCents);
+  }
+  paidAmountConfirmedCents = Math.min(totalDebtCents, paidAmountConfirmedCents);
+
+  const paidThroughMonth = paidInstallmentsConfirmed > 0 && plan.scheduleRows[paidInstallmentsConfirmed - 1]
+    ? plan.scheduleRows[paidInstallmentsConfirmed - 1].dueMonth
+    : "";
+  const remainingAfterConfirmedPaymentsCents = Math.max(0, totalDebtCents - paidAmountConfirmedCents);
+  const currentMonthPaymentCents = currentScheduleRow && !(closed && remainingAfterConfirmedPaymentsCents <= 0)
+    ? currentScheduleRow.amountCents
+    : 0;
+  const currentMonthPaymentDate = currentScheduleRow?.dueDate || "";
+  let currentMonthPaymentStatus = "none";
+  if (!currentScheduleRow) {
+    currentMonthPaymentStatus = firstDueMonth && currentMonth < firstDueMonth ? "not_due" : "none";
+  } else if (currentScheduleRow.installmentNumber <= paidInstallmentsConfirmed) {
+    currentMonthPaymentStatus = "paid";
+  } else {
+    currentMonthPaymentStatus = "open";
+  }
+  const currentMonthIsIncludedInPaidAmount = currentMonthPaymentStatus === "paid";
+  const paidInstallmentsIfCurrentMonthPaid = currentScheduleRow
+    ? Math.max(paidInstallmentsConfirmed, currentScheduleRow.installmentNumber)
+    : paidInstallmentsConfirmed;
+  const scheduledPaidAmountIfCurrentMonthPaidCents = debtPaidAmountForInstallmentCount(plan, paidInstallmentsIfCurrentMonthPaid);
+  const paidAmountIfCurrentMonthPaidCents = Math.min(
+    totalDebtCents,
+    Math.max(
+      scheduledPaidAmountIfCurrentMonthPaidCents,
+      paidAmountConfirmedCents + (currentScheduleRow && currentMonthPaymentStatus !== "paid" ? currentMonthPaymentCents : 0)
+    )
   );
+  const remainingAfterCurrentMonthIfPaidCents = Math.max(0, totalDebtCents - paidAmountIfCurrentMonthPaidCents);
+  const progressConfirmedPercent = totalDebtCents > 0
+    ? Math.round((paidAmountConfirmedCents / totalDebtCents) * 100)
+    : 0;
+  const progressIfCurrentMonthPaidPercent = totalDebtCents > 0
+    ? Math.round((paidAmountIfCurrentMonthPaidCents / totalDebtCents) * 100)
+    : 0;
+  const remainingInstallmentsConfirmed = Math.max(0, plan.totalInstallmentCount - paidInstallmentsConfirmed);
+  const remainingInstallmentsIfCurrentMonthPaid = Math.max(0, plan.totalInstallmentCount - paidInstallmentsIfCurrentMonthPaid);
+  const nextOpenPayment = plan.scheduleRows.find((row) => row.installmentNumber > paidInstallmentsConfirmed);
+  const nextOpenPaymentDate = nextOpenPayment?.dueDate || "";
+
+  const paidInstallmentsBeforeCurrentMonth = currentScheduleRow
+    ? Math.min(paidInstallmentsConfirmed, Math.max(0, currentScheduleRow.installmentNumber - 1))
+    : plan.scheduleRows.filter((row) => row.dueMonth && row.dueMonth < currentMonth && row.installmentNumber <= paidInstallmentsConfirmed).length;
+  const paidAmountBeforeCurrentMonthCents = debtPaidAmountForInstallmentCount(plan, paidInstallmentsBeforeCurrentMonth);
   const remainingBeforeCurrentMonthCents = Math.max(0, totalDebtCents - paidAmountBeforeCurrentMonthCents);
-  const remainingAfterCurrentMonthCents = Math.max(0, totalDebtCents - paidAmountAfterCurrentMonthCents);
-  const currentMonthPaymentDate = currentMonthPaymentCents > 0 && startDate
-    ? addMonthsToDate(startDate, selectedInstallmentNumber - 1)
-    : "";
-  const paidUntilBeforeCurrentMonth = paidInstallmentsBeforeCurrentMonth > 0 && startDate
-    ? addMonthsToDate(startDate, paidInstallmentsBeforeCurrentMonth - 1).slice(0, 7)
-    : "";
-  const nextPaymentDate = paidInstallmentsAfterCurrentMonth < plan.totalInstallmentCount && startDate
-    ? addMonthsToDate(startDate, paidInstallmentsAfterCurrentMonth)
+  const paidInstallmentsAfterCurrentMonth = paidInstallmentsIfCurrentMonthPaid;
+  const paidAmountAfterCurrentMonthCents = paidAmountIfCurrentMonthPaidCents;
+  const remainingAfterCurrentMonthCents = remainingAfterCurrentMonthIfPaidCents;
+  const paidUntilBeforeCurrentMonth = paidInstallmentsBeforeCurrentMonth > 0 && plan.scheduleRows[paidInstallmentsBeforeCurrentMonth - 1]
+    ? plan.scheduleRows[paidInstallmentsBeforeCurrentMonth - 1].dueMonth
     : "";
   const progressBeforeCurrentMonthPercent = totalDebtCents > 0
     ? Math.round((paidAmountBeforeCurrentMonthCents / totalDebtCents) * 100)
     : 0;
-  const progressAfterCurrentMonthPercent = totalDebtCents > 0
-    ? Math.round((paidAmountAfterCurrentMonthCents / totalDebtCents) * 100)
-    : 0;
-  const remainingInstallmentsAfterCurrentMonth = Math.max(0, plan.totalInstallmentCount - paidInstallmentsAfterCurrentMonth);
+  const progressAfterCurrentMonthPercent = progressIfCurrentMonthPaidPercent;
+  const remainingInstallmentsAfterCurrentMonth = remainingInstallmentsIfCurrentMonthPaid;
   const finalText = plan.finalPaymentCents > 0 ? ` · letzte Rate ${formatMoneyCents(plan.finalPaymentCents)}` : "";
   let displaySummary = "";
   if (totalDebtCents <= 0) {
@@ -4823,10 +4978,12 @@ function deriveDebtComputedFields(debt, selectedMonth = elements.monthInput?.val
     displaySummary = "Bitte Startdatum eintragen.";
   } else if (monthlyPaymentCents <= 0) {
     displaySummary = "Bitte Monatsrate eintragen.";
-  } else if (remainingAfterCurrentMonthCents <= 0) {
+  } else if (remainingAfterConfirmedPaymentsCents <= 0) {
     displaySummary = finalPaymentDate ? `Rechnerisch fertig ${formatMonthName(finalPaymentDate.slice(0, 7))}${finalText}.` : "Diese Schuld ist rechnerisch vollständig bezahlt.";
+  } else if (currentMonthPaymentStatus === "open") {
+    displaySummary = `${formatMoneyCents(currentMonthPaymentCents)} sind im ${formatMonthName(currentMonth)} offen. Bestätigte Restschuld: ${formatMoneyCents(remainingAfterConfirmedPaymentsCents)}.`;
   } else if (finalPaymentDate) {
-    displaySummary = `${remainingInstallmentsAfterCurrentMonth} Monat${remainingInstallmentsAfterCurrentMonth === 1 ? "" : "e"} nach ${formatMonthName(currentMonth)}, voraussichtlich fertig ${formatMonthName(finalPaymentDate.slice(0, 7))}${finalText}.`;
+    displaySummary = `${remainingInstallmentsConfirmed} offene Rate${remainingInstallmentsConfirmed === 1 ? "" : "n"}, voraussichtlich fertig ${formatMonthName(finalPaymentDate.slice(0, 7))}${finalText}.`;
   } else {
     displaySummary = "Monatsrate wird im Cashflow berücksichtigt; Restschuld bleibt offen.";
   }
@@ -4838,8 +4995,22 @@ function deriveDebtComputedFields(debt, selectedMonth = elements.monthInput?.val
     finalPaymentCents: plan.finalPaymentCents,
     regularInstallmentCount: plan.regularInstallmentCount,
     totalInstallmentCount: plan.totalInstallmentCount,
+    scheduleRows: plan.scheduleRows,
     startDate,
     currentMonth,
+    selectedMonth: currentMonth,
+    paidThroughMonth,
+    paidInstallmentsConfirmed,
+    paidAmountConfirmedCents,
+    remainingAfterConfirmedPaymentsCents,
+    currentMonthPaymentStatus,
+    currentMonthIsIncludedInPaidAmount,
+    remainingAfterCurrentMonthIfPaidCents,
+    progressConfirmedPercent,
+    progressIfCurrentMonthPaidPercent,
+    remainingInstallmentsConfirmed,
+    remainingInstallmentsIfCurrentMonthPaid,
+    nextOpenPaymentDate,
     paidInstallmentsBeforeCurrentMonth,
     paidAmountBeforeCurrentMonthCents,
     paidUntilBeforeCurrentMonth,
@@ -4852,7 +5023,7 @@ function deriveDebtComputedFields(debt, selectedMonth = elements.monthInput?.val
     progressBeforeCurrentMonthPercent,
     progressAfterCurrentMonthPercent,
     remainingInstallmentsAfterCurrentMonth,
-    nextPaymentDate,
+    nextPaymentDate: nextOpenPaymentDate,
     finalPaymentDate,
     displaySummary,
     warnings,
@@ -4865,15 +5036,12 @@ function isDebtActiveInMonth(debt, month) {
 
 function isDebtVisibleInMonth(debt, month) {
   const computed = deriveDebtComputedFields(debt, month);
-  if (isDebtMarkedClosed(debt)) return false;
-  if (debt.startDate && monthToNumber(month) < debtStartMonthNumber(debt)) return false;
-  return computed.remainingBeforeCurrentMonthCents > 0
-    || computed.remainingAfterCurrentMonthCents > 0
-    || computed.currentMonthPaymentCents > 0;
+  if (computed.totalDebtCents <= 0) return false;
+  return !isDebtMarkedClosed(debt) || computed.remainingAfterConfirmedPaymentsCents > 0;
 }
 
 function isDebtClosed(debt, month = elements.monthInput?.value || currentLocalMonth()) {
-  return isDebtMarkedClosed(debt) || deriveDebtComputedFields(debt, month).remainingAfterCurrentMonthCents <= 0;
+  return isDebtMarkedClosed(debt) || deriveDebtComputedFields(debt, month).remainingAfterConfirmedPaymentsCents <= 0;
 }
 
 function debtStartMonthNumber(debt) {
@@ -4986,7 +5154,7 @@ function entryBadges(entry, month) {
 }
 
 function debtBadges(debt, month, active) {
-  const status = isDebtClosed(debt) || debtObjectRemaining(debt, month) <= 0 ? (normalizeStatus(debt.status) === "ended" ? "ended" : "paid") : "open";
+  const status = isDebtClosed(debt, month) || debtObjectRemaining(debt, month) <= 0 ? (normalizeStatus(debt.status) === "ended" ? "ended" : "paid") : "open";
   return [
     statusBadge(statusLabel(status), `status-${status}`),
     active ? statusBadge("offen im Monat", "status-carry") : "",
@@ -5237,37 +5405,51 @@ function recurrenceLabel(entryOrValue) {
 }
 
 function normalizeDebt(debt) {
-  const totalAmount = Number(debt.totalAmount || 0);
-  const paidSoFar = Number(debt.paidSoFar || 0);
+  const totalAmount = debt.totalAmountCents ? fromCents(debt.totalAmountCents) : Number(debt.totalAmount || 0);
+  const paidSoFar = debt.manualPaidAmountCents ? fromCents(debt.manualPaidAmountCents) : Number(debt.paidSoFar || 0);
   const startDate = debt.startDate || (debt.startMonth ? monthToDate(debt.startMonth) : "");
   const endDate = debt.endDate || (debt.endMonth ? monthToDate(debt.endMonth) : "");
+  const hasExplicitCalculationMode = Boolean(debt.calculationMode);
   const calculationMode = debt.calculationMode
     ? normalizeDebtCalculationMode(debt.calculationMode)
     : (!startDate && paidSoFar > 0 ? "manual" : "auto_schedule");
+  const manualPaidInstallments = Math.max(0, Math.floor(Number(debt.manualPaidInstallments || debt.paidInstallments || 0)));
+  const paidThroughMonth = (hasExplicitCalculationMode || paidSoFar > 0 || manualPaidInstallments > 0)
+    ? normalizeMonthValue(debt.paidThroughMonth)
+    : "";
+  const monthlyPayment = debt.monthlyPaymentCents ? fromCents(debt.monthlyPaymentCents) : Number(debt.monthlyPayment || 0);
+  const principalAmount = debt.principalAmountCents ? fromCents(debt.principalAmountCents) : Number(debt.principalAmount || 0);
+  const interestAmount = debt.interestAmountCents ? fromCents(debt.interestAmountCents) : Number(debt.interestAmount || 0);
+  const finalPayment = debt.finalPaymentCents ? fromCents(debt.finalPaymentCents) : Number(debt.finalPayment || 0);
   return {
     id: debt.id || createId(),
     personId: debt.personId || fallbackPersonId(),
     duplicateOf: debt.duplicateOf || "",
     creditor: debt.creditor || "",
     totalAmount,
+    totalAmountCents: toCents(totalAmount),
     calculationMode,
     paidSoFar,
-    paidThroughMonth: paidSoFar > 0
-      ? normalizeMonthValue(debt.paidThroughMonth) || currentLocalMonth()
-      : "",
-    manualPaidInstallments: Math.max(0, Math.floor(Number(debt.manualPaidInstallments || debt.paidInstallments || 0))),
-    monthlyPayment: Number(debt.monthlyPayment || 0),
+    manualPaidAmountCents: toCents(paidSoFar),
+    paidThroughMonth,
+    manualPaidInstallments,
+    monthlyPayment,
+    monthlyPaymentCents: toCents(monthlyPayment),
     startDate,
     endDate,
     status: normalizeStatus(debt.status || (paidSoFar >= totalAmount && totalAmount > 0 ? "paid" : "open")),
     paymentMethod: debt.paymentMethod || "",
     account: debt.account || "",
     liabilityType: debt.liabilityType || inferLiabilityType(debt),
-    principalAmount: Number(debt.principalAmount || 0),
-    interestAmount: Number(debt.interestAmount || 0),
+    principalAmount,
+    principalAmountCents: toCents(principalAmount),
+    interestAmount,
+    interestAmountCents: toCents(interestAmount),
     nominalRate: Number(debt.nominalRate || 0),
+    effectiveRate: Number(debt.effectiveRate || 0),
     termMonths: Number(debt.termMonths || 0),
-    finalPayment: Number(debt.finalPayment || 0),
+    finalPayment,
+    finalPaymentCents: toCents(finalPayment),
     note: debt.note || "",
   };
 }
@@ -5427,6 +5609,9 @@ function runBudgetUpSelfTest() {
     try {
     assert("Money Parser 16.500,00", toCents("16.500,00") === 1650000, `cents=${toCents("16.500,00")}`);
     assert("Money Parser 1.000,00", toCents("1.000,00") === 100000, `cents=${toCents("1.000,00")}`);
+    assert("Money Parser 38.380,93", parseMoneyToCents("38.380,93") === 3838093, `cents=${parseMoneyToCents("38.380,93")}`);
+    assert("Money Parser 38380.93", parseMoneyToCents("38380.93") === 3838093, `cents=${parseMoneyToCents("38380.93")}`);
+    assert("Money Parser 456,80/456.80", parseMoneyToCents("456,80") === 45680 && parseMoneyToCents("456.80") === 45680 && parseMoneyToCents(456.8) === 45680, "456 parser failed");
     assert("Money Parser 500,00", toCents("500,00") === 50000, `cents=${toCents("500,00")}`);
     assert("Money Parser 12.500,00", toCents("12.500,00") === 1250000, `cents=${toCents("12.500,00")}`);
     assert("Money Parser numeric", toCents(16500) === 1650000 && toCents(1000) === 100000 && toCents(500) === 50000, "numeric parse failed");
@@ -5460,7 +5645,7 @@ function runBudgetUpSelfTest() {
       { id: "d-paid", personId: "p1-test", creditor: "Paid Bank", totalAmount: 300, paidSoFar: 300, monthlyPayment: 30, startDate: "2026-06-03", endDate: "", status: "paid", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
       { id: "d-final", personId: "debt-test", creditor: "Final Rate", totalAmount: 120, paidSoFar: 0, monthlyPayment: 50, startDate: "2026-06-15", endDate: "", status: "open", paymentMethod: "Überweisung", account: "", principalAmount: 0, interestAmount: 0, nominalRate: 0, termMonths: 0, finalPayment: 0, note: "" },
       { id: "d-iphone", personId: "iphone-test", creditor: "IPHONE 15 PRO MAX 256GB, TITAN NATUR | 356388811386100, 18.02.2027", totalAmount: 1518.2, paidSoFar: 1182.2, paidThroughMonth: "2026-06", monthlyPayment: 42, startDate: "2024-02-18", endDate: "2027-02-18", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 1518.2, interestAmount: 0, nominalRate: 0, termMonths: 36, finalPayment: 42, note: "" },
-      { id: "d-consors", personId: "zero-debt-test", creditor: "Consors Bank kredit24Best via check24", totalAmount: 9308, paidSoFar: 0, paidThroughMonth: "2026-07", monthlyPayment: 232.7, startDate: "2026-06-01", endDate: "2029-09-01", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 9308, interestAmount: 0, nominalRate: 6.47, termMonths: 40, finalPayment: 232.7, note: "Altbestand mit falschem bezahlt-bis-Anker" },
+      { id: "d-consors", personId: "zero-debt-test", creditor: "Consors Bank kredit24Best via check24", totalAmount: 9308, paidSoFar: 0, paidThroughMonth: "", monthlyPayment: 232.7, startDate: "2026-06-01", endDate: "2029-09-01", status: "open", paymentMethod: "Lastschrift", account: "Sparkasse", principalAmount: 9308, interestAmount: 0, nominalRate: 6.47, termMonths: 40, finalPayment: 232.7, note: "Altbestand mit falschem bezahlt-bis-Anker" },
     ];
     state.assets = [
       { id: "a-cash", personId: "p1-test", name: "Bargeld", amount: 200, note: "" },
@@ -5484,9 +5669,9 @@ function runBudgetUpSelfTest() {
     assert("wiederkehrende Ausgabe ohne Enddatum läuft weiter", july.entryExpense === 50, `julyEntryExpense=${july.entryExpense}`);
     assert("wiederkehrende Ausgabe mit Enddatum endet", !getEntriesForMonth("2026-07", context).some((entry) => entry.id === "e-ended"), "ended recurring should be absent in July");
     assert("bezahlte Schuld wird nicht fortgeführt", !getDebtsForMonth("2026-06", context, { activeOnly: true }).some((debt) => debt.id === "d-paid"), "paid debt should be inactive");
-    assert("offene Restschuld korrekt", june.totalDebt === 350, `totalDebt=${june.totalDebt}`);
+    assert("offene Restschuld korrekt", june.totalDebt === 400, `totalDebt=${june.totalDebt}`);
     assert("Vermögen Kontext korrekt", june.totalAssets === 200, `totalAssets=${june.totalAssets}`);
-    assert("Nettovermögen korrekt", june.netWorth === -150, `netWorth=${june.netWorth}`);
+    assert("Nettovermögen korrekt", june.netWorth === -200, `netWorth=${june.netWorth}`);
     assert("Kontext Person filtert andere Person", june.entryExpense !== family.entryExpense && family.entryExpense === 1174, `familyEntryExpense=${family.entryExpense}`);
     assert("Budget geplant/ausgegeben/übrig", budget.totalBudget === 400 && budget.totalSpent === 175 && budget.remaining === 225 && budget.spentByCategory.get("Lebensmittel") === 100 && budget.spentByCategory.get("Sonstiges") === 75, `totalSpent=${budget.totalSpent}, remaining=${budget.remaining}`);
     assert("Kalender Tageswert Ausgabe", dayExpense.expense === 100 && dayExpense.net === -100, JSON.stringify(dayExpense));
@@ -5498,10 +5683,10 @@ function runBudgetUpSelfTest() {
     const finalDebtAugust = calculateMonthSummary("2026-08", debtContext);
     const finalDebtSeptember = calculateMonthSummary("2026-09", debtContext);
     const finalDebtForecast = monthlyForecast("2026-06", debtContext, 4);
-    assert("Schuldenrate reduziert Restschuld monatlich", finalDebtJune.debtMonthlyCost === 50 && finalDebtJune.totalDebt === 70 && finalDebtJuly.debtMonthlyCost === 50 && finalDebtJuly.totalDebt === 20, JSON.stringify({ finalDebtJune, finalDebtJuly }));
-    assert("Letzte Schuldenrate wird auf Restbetrag begrenzt", finalDebtAugust.debtMonthlyCost === 20 && finalDebtAugust.totalDebt === 0 && finalDebtSeptember.debtMonthlyCost === 0 && finalDebtSeptember.totalDebt === 0, JSON.stringify({ finalDebtAugust, finalDebtSeptember }));
+    assert("Offene Schuldenrate senkt bestätigte Restschuld nicht automatisch", finalDebtJune.debtMonthlyCost === 50 && finalDebtJune.totalDebt === 120 && finalDebtJuly.debtMonthlyCost === 50 && finalDebtJuly.totalDebt === 120, JSON.stringify({ finalDebtJune, finalDebtJuly }));
+    assert("Letzte geplante Schuldenrate wird im Cashflow begrenzt", finalDebtAugust.debtMonthlyCost === 20 && finalDebtAugust.totalDebt === 120 && finalDebtSeptember.debtMonthlyCost === 0 && finalDebtSeptember.totalDebt === 120, JSON.stringify({ finalDebtAugust, finalDebtSeptember }));
     assert("Restgeld-Plan folgt Schuldenraten monatlich", finalDebtForecast[0].restMoney === -50 && finalDebtForecast[1].restMoney === -50 && finalDebtForecast[2].restMoney === -20 && finalDebtForecast[3].restMoney === 0, JSON.stringify(finalDebtForecast));
-    assert("Restgeld-Plan zeigt sinkende Restschuld", finalDebtForecast[0].remainingDebt === 70 && finalDebtForecast[1].remainingDebt === 20 && finalDebtForecast[2].remainingDebt === 0 && finalDebtForecast[3].remainingDebt === 0, JSON.stringify(finalDebtForecast));
+    assert("Restgeld-Plan hält bestätigte Restschuld stabil ohne Zahlung", finalDebtForecast[0].remainingDebt === 120 && finalDebtForecast[1].remainingDebt === 120 && finalDebtForecast[2].remainingDebt === 120 && finalDebtForecast[3].remainingDebt === 120, JSON.stringify(finalDebtForecast));
     assert("Kalender zeigt letzte Schuldenrate nur mit Restbetrag", getCalendarDaySummary("2026-08-15", debtContext).debtExpense === 20, JSON.stringify(getCalendarDaySummary("2026-08-15", debtContext)));
     const targoAutoDebt = {
       id: "targo-auto",
@@ -5510,7 +5695,7 @@ function runBudgetUpSelfTest() {
       totalAmount: 16500,
       calculationMode: "auto_schedule",
       paidSoFar: 0,
-      paidThroughMonth: "",
+      paidThroughMonth: "2026-07",
       manualPaidInstallments: 0,
       monthlyPayment: 1000,
       startDate: "2026-05-04",
@@ -5521,16 +5706,48 @@ function runBudgetUpSelfTest() {
     const targoAugust = deriveDebtComputedFields(targoAutoDebt, "2026-08");
     const targoJuly = deriveDebtComputedFields(targoAutoDebt, "2026-07");
     const targoSeptemberFinal = deriveDebtComputedFields(targoAutoDebt, "2027-09");
-    const targoBeforeStart = deriveDebtComputedFields(targoAutoDebt, "2026-04");
+    const targoBeforeStart = deriveDebtComputedFields({ ...targoAutoDebt, paidThroughMonth: "" }, "2026-04");
+    const targoContractSchedule = deriveDebtSchedule({
+      totalAmount: 38380.93,
+      monthlyPayment: 456.8,
+      finalPayment: 466.53,
+      startDate: "2025-06-01",
+      endDate: "2032-05-01",
+      termMonths: 84,
+    });
+    const targoContractAugustOpen = deriveDebtComputedFields({
+      totalAmount: 38380.93,
+      monthlyPayment: 456.8,
+      finalPayment: 466.53,
+      startDate: "2025-06-01",
+      endDate: "2032-05-01",
+      termMonths: 84,
+      paidThroughMonth: "2026-07",
+      calculationMode: "auto_schedule",
+      status: "open",
+    }, "2026-08");
+    const targoContractAugustPaid = deriveDebtComputedFields({
+      totalAmount: 38380.93,
+      monthlyPayment: 456.8,
+      finalPayment: 466.53,
+      startDate: "2025-06-01",
+      endDate: "2032-05-01",
+      termMonths: 84,
+      paidThroughMonth: "2026-08",
+      calculationMode: "auto_schedule",
+      status: "open",
+    }, "2026-08");
     assert("Targobank August: Ratenplan Kerndaten", targoAugust.totalDebtCents === 1650000 && targoAugust.monthlyPaymentCents === 100000 && targoAugust.finalPaymentCents === 50000 && targoAugust.regularInstallmentCount === 16 && targoAugust.totalInstallmentCount === 17, JSON.stringify(targoAugust));
-    assert("Targobank August: vor Rate", targoAugust.paidInstallmentsBeforeCurrentMonth === 3 && targoAugust.paidAmountBeforeCurrentMonthCents === 300000 && targoAugust.remainingBeforeCurrentMonthCents === 1350000, JSON.stringify(targoAugust));
-    assert("Targobank August: nach Rate", targoAugust.currentMonthPaymentCents === 100000 && targoAugust.currentMonthPaymentDate === "2026-08-04" && targoAugust.paidInstallmentsAfterCurrentMonth === 4 && targoAugust.paidAmountAfterCurrentMonthCents === 400000 && targoAugust.remainingAfterCurrentMonthCents === 1250000 && targoAugust.progressAfterCurrentMonthPercent === 24, JSON.stringify(targoAugust));
-    assert("Targobank August: Laufzeit", targoAugust.remainingInstallmentsAfterCurrentMonth === 13 && targoAugust.finalPaymentDate === "2027-09-04", JSON.stringify(targoAugust));
-    assert("Targobank Juli: Monat davor", targoJuly.paidInstallmentsBeforeCurrentMonth === 2 && targoJuly.paidAmountBeforeCurrentMonthCents === 200000 && targoJuly.currentMonthPaymentCents === 100000 && targoJuly.remainingAfterCurrentMonthCents === 1350000, JSON.stringify(targoJuly));
-    assert("Targobank September 2027: letzte Rate", targoSeptemberFinal.currentMonthPaymentCents === 50000 && targoSeptemberFinal.remainingAfterCurrentMonthCents === 0 && targoSeptemberFinal.progressAfterCurrentMonthPercent === 100, JSON.stringify(targoSeptemberFinal));
-    assert("Targobank vor Startdatum", targoBeforeStart.paidAmountBeforeCurrentMonthCents === 0 && targoBeforeStart.currentMonthPaymentCents === 0 && targoBeforeStart.remainingAfterCurrentMonthCents === 1650000, JSON.stringify(targoBeforeStart));
+    assert("Targobank August: bestätigt/offen/projektion", targoAugust.paidInstallmentsConfirmed === 3 && targoAugust.paidAmountConfirmedCents === 300000 && targoAugust.remainingAfterConfirmedPaymentsCents === 1350000 && targoAugust.currentMonthPaymentCents === 100000 && targoAugust.currentMonthPaymentStatus === "open" && targoAugust.remainingAfterCurrentMonthIfPaidCents === 1250000 && targoAugust.progressConfirmedPercent === 18 && targoAugust.progressIfCurrentMonthPaidPercent === 24, JSON.stringify(targoAugust));
+    assert("Targobank August: Laufzeit", targoAugust.remainingInstallmentsIfCurrentMonthPaid === 13 && targoAugust.finalPaymentDate === "2027-09-04", JSON.stringify(targoAugust));
+    assert("Targobank Juli: bezahlt bis Juli", targoJuly.paidInstallmentsConfirmed === 3 && targoJuly.currentMonthPaymentStatus === "paid" && targoJuly.remainingAfterConfirmedPaymentsCents === 1350000, JSON.stringify(targoJuly));
+    assert("Targobank September 2027: letzte Rate offen/projiziert", targoSeptemberFinal.currentMonthPaymentCents === 50000 && targoSeptemberFinal.remainingAfterConfirmedPaymentsCents === 1350000 && targoSeptemberFinal.remainingAfterCurrentMonthIfPaidCents === 0, JSON.stringify(targoSeptemberFinal));
+    assert("Targobank vor Startdatum", targoBeforeStart.paidAmountConfirmedCents === 0 && targoBeforeStart.currentMonthPaymentCents === 0 && targoBeforeStart.remainingAfterConfirmedPaymentsCents === 1650000 && targoBeforeStart.currentMonthPaymentStatus === "not_due", JSON.stringify(targoBeforeStart));
+    assert("TargoBank Vertrag 38.380,93 Schedule", targoContractSchedule.regularInstallmentCount === 83 && targoContractSchedule.totalInstallmentCount === 84 && targoContractSchedule.finalPaymentDate === "2032-05-01", JSON.stringify(targoContractSchedule));
+    assert("TargoBank August offen reduziert bestätigte Restschuld nicht", targoContractAugustOpen.paidInstallmentsConfirmed === 14 && targoContractAugustOpen.paidAmountConfirmedCents === 639520 && targoContractAugustOpen.remainingAfterConfirmedPaymentsCents === 3198573 && targoContractAugustOpen.currentMonthPaymentCents === 45680 && targoContractAugustOpen.currentMonthPaymentStatus === "open" && targoContractAugustOpen.remainingAfterCurrentMonthIfPaidCents === 3152893 && targoContractAugustOpen.progressConfirmedPercent === 17 && targoContractAugustOpen.progressIfCurrentMonthPaidPercent === 18, JSON.stringify(targoContractAugustOpen));
+    assert("TargoBank August bezahlt reduziert bestätigte Restschuld", targoContractAugustPaid.paidAmountConfirmedCents === 685200 && targoContractAugustPaid.remainingAfterConfirmedPaymentsCents === 3152893 && targoContractAugustPaid.currentMonthPaymentStatus === "paid", JSON.stringify(targoContractAugustPaid));
     const targoManual = deriveDebtComputedFields({ ...targoAutoDebt, calculationMode: "manual", paidSoFar: 3000, paidThroughMonth: "2026-07" }, "2026-08");
-    assert("Manual Override bleibt explizit", targoManual.calculationMode === "manual" && targoManual.paidAmountBeforeCurrentMonthCents === 300000 && targoManual.currentMonthPaymentCents === 100000 && targoManual.remainingAfterCurrentMonthCents === 1250000, JSON.stringify(targoManual));
+    assert("Manual Override bleibt explizit", targoManual.calculationMode === "manual" && targoManual.paidAmountConfirmedCents === 300000 && targoManual.currentMonthPaymentCents === 100000 && targoManual.remainingAfterCurrentMonthIfPaidCents === 1250000, JSON.stringify(targoManual));
 
     const iphoneContext = getActiveContext("iphone-test");
     const iphoneDebt = state.debts.find((debt) => debt.id === "d-iphone");
@@ -5538,10 +5755,10 @@ function runBudgetUpSelfTest() {
     const iphoneAugust = calculateMonthSummary("2026-08", iphoneContext);
     const iphoneFebruary = calculateMonthSummary("2027-02", iphoneContext);
     elements.monthInput.value = "2026-07";
-    assert("iPhone Auto-Restschuld Juli aus Startdatum und Rate", closeEnough(currentOutstandingDebt(iphoneDebt), 258.2), `openNow=${currentOutstandingDebt(iphoneDebt)}`);
-    assert("iPhone Juli Auto-Rate senkt Restschuld", closeEnough(iphoneJuly.debtMonthlyCost, 42) && closeEnough(iphoneJuly.totalDebt, 258.2), JSON.stringify(iphoneJuly));
-    assert("iPhone August Auto-Rate schreibt fort", closeEnough(iphoneAugust.debtMonthlyCost, 42) && closeEnough(iphoneAugust.totalDebt, 216.2), JSON.stringify(iphoneAugust));
-    assert("iPhone ist bis Februar 2027 rechnerisch erledigt", closeEnough(iphoneFebruary.debtMonthlyCost, 0) && closeEnough(iphoneFebruary.totalDebt, 0), JSON.stringify(iphoneFebruary));
+    assert("iPhone Restschuld bleibt beim bestätigten Stand", closeEnough(currentOutstandingDebt(iphoneDebt), 300.2), `openNow=${currentOutstandingDebt(iphoneDebt)}`);
+    assert("iPhone Juli offene Rate senkt bestätigte Restschuld nicht", closeEnough(iphoneJuly.debtMonthlyCost, 42) && closeEnough(iphoneJuly.totalDebt, 300.2), JSON.stringify(iphoneJuly));
+    assert("iPhone August offene Rate bleibt Cashflow, nicht Tilgung", closeEnough(iphoneAugust.debtMonthlyCost, 42) && closeEnough(iphoneAugust.totalDebt, 300.2), JSON.stringify(iphoneAugust));
+    assert("iPhone Februar bleibt offen ohne bestätigte Zahlungen", closeEnough(iphoneFebruary.debtMonthlyCost, 6.2) && closeEnough(iphoneFebruary.totalDebt, 300.2), JSON.stringify(iphoneFebruary));
     const migratedOldDebt = normalizeDebt({ id: "legacy-phone", personId: "iphone-test", creditor: "Altbestand", totalAmount: 1518.2, paidSoFar: 1182.2, monthlyPayment: 42, startDate: "2024-02-18", status: "open" });
     assert("Alte Schulden bleiben standardmäßig auto", migratedOldDebt.calculationMode === "auto_schedule" && migratedOldDebt.paidSoFar === 1182.2, JSON.stringify(migratedOldDebt));
     const zeroDebtContext = getActiveContext("zero-debt-test");
@@ -5550,10 +5767,10 @@ function runBudgetUpSelfTest() {
     const consorsJuly = calculateMonthSummary("2026-07", zeroDebtContext);
     const normalizedZeroPaidDebt = normalizeDebt({ id: "legacy-zero", personId: "zero-debt-test", creditor: "Altbestand Null", totalAmount: 9308, paidSoFar: 0, paidThroughMonth: "2026-07", monthlyPayment: 232.7, startDate: "2026-06-01", status: "open" });
     assert("Schulden ohne bisher bezahlt ignorieren alten Bezahlt-bis-Anker", normalizedZeroPaidDebt.calculationMode === "auto_schedule" && normalizedZeroPaidDebt.paidThroughMonth === "", JSON.stringify(normalizedZeroPaidDebt));
-    assert("Consors Juni Rate senkt Restschuld trotz 0 bisher bezahlt", closeEnough(consorsJune.debtMonthlyCost, 232.7) && closeEnough(consorsJune.totalDebt, 9075.3), JSON.stringify(consorsJune));
-    assert("Consors Juli schreibt Restschuld weiter fort", closeEnough(consorsJuly.debtMonthlyCost, 232.7) && closeEnough(consorsJuly.totalDebt, 8842.6), JSON.stringify(consorsJuly));
+    assert("Consors Juni offene Rate senkt Restschuld nicht", closeEnough(consorsJune.debtMonthlyCost, 232.7) && closeEnough(consorsJune.totalDebt, 9308), JSON.stringify(consorsJune));
+    assert("Consors Juli offene Rate bleibt Cashflow", closeEnough(consorsJuly.debtMonthlyCost, 232.7) && closeEnough(consorsJuly.totalDebt, 9308), JSON.stringify(consorsJuly));
     elements.monthInput.value = "2026-07";
-    assert("Restschuld nach Monatsrate wird aus Start und Raten berechnet", closeEnough(currentOutstandingDebt(consorsDebt), 8842.6), `openNow=${currentOutstandingDebt(consorsDebt)}`);
+    assert("Restschuld bleibt ohne bestätigte Zahlung unverändert", closeEnough(currentOutstandingDebt(consorsDebt), 9308), `openNow=${currentOutstandingDebt(consorsDebt)}`);
     elements.monthInput.value = "2026-08";
     elements.debtCalculationModeInput.value = "auto_schedule";
     elements.debtTotalInput.value = "16.500,00";
@@ -5567,15 +5784,15 @@ function runBudgetUpSelfTest() {
     elements.finalPaymentInput.value = "500,00";
     syncDebtCalculationFields();
     updateDebtLiveSummary();
-    assert("Schuldenformular Vorschau ignoriert manuelle Werte im Auto-Modus", elements.debtLiveSummary.querySelector("strong").textContent.includes("12.500,00") && elements.debtLiveSummary.textContent.includes("Automatisch"), elements.debtLiveSummary.textContent);
+    assert("Schuldenformular Vorschau ignoriert manuelle Werte im Auto-Modus", elements.debtLiveSummary.querySelector("strong").textContent.includes("16.500,00") && elements.debtLiveSummary.textContent.includes("Restschuld nach Zahlung") && elements.debtLiveSummary.textContent.includes("12.500,00") && elements.debtLiveSummary.textContent.includes("Automatisch"), elements.debtLiveSummary.textContent);
     const roundtripDebt = normalizeDebt(targoAutoDebt);
     const roundtripComputed = deriveDebtComputedFields(roundtripDebt, "2026-08");
-    assert("Preview/Speichern Roundtrip berechnet identisch", centsEqual(roundtripComputed.remainingAfterCurrentMonthCents, targoAugust.remainingAfterCurrentMonthCents) && centsEqual(roundtripComputed.currentMonthPaymentCents, targoAugust.currentMonthPaymentCents) && roundtripComputed.progressAfterCurrentMonthPercent === targoAugust.progressAfterCurrentMonthPercent, JSON.stringify(roundtripComputed));
+    assert("Preview/Speichern Roundtrip berechnet identisch", centsEqual(roundtripComputed.remainingAfterConfirmedPaymentsCents, targoAugust.remainingAfterConfirmedPaymentsCents) && centsEqual(roundtripComputed.currentMonthPaymentCents, targoAugust.currentMonthPaymentCents) && roundtripComputed.currentMonthPaymentStatus === targoAugust.currentMonthPaymentStatus && roundtripComputed.finalPaymentDate === targoAugust.finalPaymentDate, JSON.stringify(roundtripComputed));
     elements.monthInput.value = "2026-06";
     render();
     assert("Restgeld-Plan wird in der Übersicht gerendert", Boolean(elements.debtForecastList.querySelector(".forecast-row")), elements.debtForecastList.innerHTML);
     assert("Schuldenzeile ist direkt bearbeitbar", Boolean(elements.debtList.querySelector('[data-row-edit-kind="debt"][data-row-edit-id="d-open"]')), elements.debtList.innerHTML);
-    assert("Schuldenzeile zeigt explizite Restschuld nach Rate", !elements.debtList.textContent.includes("Restschuld aktuell") && elements.debtList.textContent.includes("Restschuld nach Juni-Rate"), elements.debtList.textContent);
+    assert("Schuldenzeile zeigt bestätigte Restschuld und offene Rate", !elements.debtList.textContent.includes("Restschuld aktuell") && elements.debtList.textContent.includes("Restschuld nach letzter bezahlter Rate") && elements.debtList.textContent.includes("Offene Rate im Juni"), elements.debtList.textContent);
     assert("Vermoegenszeile ist direkt bearbeitbar", Boolean(elements.assetList.querySelector('[data-row-edit-kind="asset"][data-row-edit-id="a-cash"]')), elements.assetList.innerHTML);
     selectedCalendarDay = "2026-06-03";
     entryListScope = "day";
@@ -5621,7 +5838,7 @@ function runBudgetUpSelfTest() {
     state.debts.push({ ...state.debts[0], id: "d-open-copy", personId: "p2-test", duplicateOf: "d-open" });
     state.assets.push({ ...state.assets[0], id: "a-cash-copy", personId: "p2-test", duplicateOf: "a-cash" });
     const familyBeforeDelete = calculateMonthSummary("2026-06", getActiveContext("all"));
-    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && closeEnough(familyBeforeDelete.totalDebt, 10595.5) && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
+    assert("Gesamt zählt Kopien nicht doppelt", closeEnough(familyBeforeDelete.entryExpense, 1201.99) && closeEnough(familyBeforeDelete.totalDebt, 11128.2) && familyBeforeDelete.totalAssets === 11199, JSON.stringify(familyBeforeDelete));
     const editedCopy = preserveCopyTracking({ ...state.entries.find((entry) => entry.id === "case-income-copy"), amount: 2100 }, state.entries.find((entry) => entry.id === "case-income-copy"));
     assert("Bearbeiten bewahrt duplicateOf", editedCopy.duplicateOf === "case-income", JSON.stringify(editedCopy));
     assert("Fall D/E Kopien bleiben aus Gesamt heraus", calculateMonthSummary("2026-05", getActiveContext("case-copy")).income === 2000 && calculateMonthSummary("2026-05", getActiveContext("all")).totalAssets === 11199, JSON.stringify(calculateMonthSummary("2026-05", getActiveContext("all"))));

@@ -5162,6 +5162,19 @@ body {
   box-shadow: 0 22px 54px rgba(47, 125, 246, 0.42);
 }
 
+@media (max-width: 480px) {
+  .fab-layer {
+    right: max(18px, env(safe-area-inset-right));
+    bottom: calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .fab-button {
+    width: 60px;
+    height: 60px;
+    font-size: 2.55rem;
+  }
+}
+
 @media (min-width: 980px) {
   .app-shell {
     max-width: 1380px;
